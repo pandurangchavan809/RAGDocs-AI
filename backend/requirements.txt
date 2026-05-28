@@ -1,0 +1,12 @@
+Flask
+Flask-Cors
+Flask-JWT-Extended
+Flask-SQLAlchemy
+PyPDF2
+python-dotenv
+langchain-chroma
+google-genai
+chromadb
+PyMySQL
+cryptography
+gunicorn
