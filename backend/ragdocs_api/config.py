@@ -22,6 +22,26 @@ def get_env_int(name, default):
     return int(value)
 
 
+def normalize_origin(origin):
+    return origin.strip().rstrip("/")
+
+
+def get_cors_origins():
+    raw_origins = os.getenv("FRONTEND_URLS", "").strip()
+    if not raw_origins:
+        raw_origins = os.getenv("FRONTEND_URL", "*").strip()
+
+    if raw_origins == "*":
+        return "*"
+
+    origins = [
+        normalize_origin(origin)
+        for origin in raw_origins.split(",")
+        if origin.strip()
+    ]
+    return origins or "*"
+
+
 def build_database_uri():
     database_url = os.getenv("DATABASE_URL", "").strip()
     if database_url:
@@ -64,4 +84,4 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret")
     MAX_CONTENT_LENGTH = 20 * 1024 * 1024
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "*")
+    CORS_ORIGINS = get_cors_origins()
