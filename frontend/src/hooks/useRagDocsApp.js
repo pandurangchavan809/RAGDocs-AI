@@ -1,6 +1,12 @@
 import { useEffect, useState } from "react";
 import api, { setAuthToken } from "../api";
-import { emptyForm, emptyNotice, TOKEN_KEY, USER_KEY } from "../constants/app";
+import {
+  emptyForm,
+  emptyNotice,
+  MODEL_KEY,
+  TOKEN_KEY,
+  USER_KEY,
+} from "../constants/app";
 
 export function useRagDocsApp() {
   const [token, setToken] = useState(localStorage.getItem(TOKEN_KEY) || "");
@@ -14,6 +20,11 @@ export function useRagDocsApp() {
   const [selectedDocs, setSelectedDocs] = useState([]);
   const [history, setHistory] = useState([]);
   const [question, setQuestion] = useState("");
+  const [pendingQuestion, setPendingQuestion] = useState("");
+  const [config, setConfig] = useState(null);
+  const [model, setModelState] = useState(
+    localStorage.getItem(MODEL_KEY) || "auto"
+  );
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
@@ -29,6 +40,7 @@ export function useRagDocsApp() {
       return;
     }
     loadDashboard();
+    loadConfig();
   }, [token]);
 
   useEffect(() => {
@@ -42,6 +54,28 @@ export function useRagDocsApp() {
 
     return () => window.clearTimeout(timer);
   }, [notice]);
+
+  // Drop a stale selection if the server no longer offers that model.
+  useEffect(() => {
+    if (config && model !== "auto" && !config.models.some((m) => m.id === model)) {
+      setModel("auto");
+    }
+  }, [config, model]);
+
+  function setModel(nextModel) {
+    setModelState(nextModel);
+    localStorage.setItem(MODEL_KEY, nextModel);
+  }
+
+  async function loadConfig() {
+    try {
+      const response = await api.get("/config");
+      setConfig(response.data);
+    } catch {
+      // Chat still works on the backend default without the model list.
+      setConfig(null);
+    }
+  }
 
   async function loadDashboard() {
     try {
@@ -70,6 +104,8 @@ export function useRagDocsApp() {
     setDocuments([]);
     setSelectedDocs([]);
     setHistory([]);
+    setConfig(null);
+    setError("");
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
     setAuthToken("");
@@ -116,23 +152,19 @@ export function useRagDocsApp() {
     }
   }
 
-  async function handleUpload(event) {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
+  async function handleUpload(file) {
     setUploading(true);
     setError("");
     try {
       const formData = new FormData();
       formData.append("file", file);
       await api.post("/documents/upload", formData);
-      event.target.value = "";
       showNotice("PDF uploaded successfully.");
       await loadDashboard();
+      return true;
     } catch (err) {
       handleError(err, "Could not upload this PDF.");
+      return false;
     } finally {
       setUploading(false);
     }
@@ -171,38 +203,41 @@ export function useRagDocsApp() {
     );
   }
 
-  async function handleAsk(event) {
-    event.preventDefault();
-    if (!question.trim()) {
+  async function askQuestion(text) {
+    const asked = text.trim();
+    if (!asked || busy) {
       return;
     }
 
-    const pendingQuestion = question.trim();
     setBusy(true);
     setError("");
     setQuestion("");
+    setPendingQuestion(asked);
 
     try {
       const response = await api.post("/chat", {
-        question: pendingQuestion,
+        question: asked,
         document_ids: selectedDocs,
+        model,
       });
 
       setHistory((current) => [
         ...current,
         {
           id: response.data.message_id,
-          question: pendingQuestion,
+          question: asked,
           answer: response.data.answer,
           sources: response.data.sources,
+          model: response.data.model,
           created_at: new Date().toISOString(),
         },
       ]);
     } catch (err) {
-      setQuestion(pendingQuestion);
+      setQuestion(asked);
       handleError(err, "Could not get an answer right now.");
     } finally {
       setBusy(false);
+      setPendingQuestion("");
     }
   }
 
@@ -210,23 +245,28 @@ export function useRagDocsApp() {
     authMode,
     busy,
     clearingHistory,
+    config,
     documents,
     error,
     form,
     history,
+    model,
     notice,
+    pendingQuestion,
     question,
     selectedDocs,
     token,
     uploading,
     user,
+    askQuestion,
     clearSession,
-    handleAsk,
     handleAuthSubmit,
     handleClearHistory,
     handleUpload,
     setAuthMode,
+    setError,
     setForm,
+    setModel,
     setQuestion,
     toggleDocument,
   };

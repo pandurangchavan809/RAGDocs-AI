@@ -1,37 +1,107 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap");
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-white text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  ::selection {
+    @apply bg-brand-500/25;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(161 161 170 / 0.35) transparent;
+  }
 }
 
-body {
-  @apply min-h-screen bg-base text-white antialiased;
-  background-image:
-    radial-gradient(circle at top left, rgba(134, 239, 172, 0.18), transparent 30%),
-    radial-gradient(circle at top right, rgba(96, 165, 250, 0.14), transparent 25%),
-    linear-gradient(180deg, #0a0f1c 0%, #08101a 100%);
+@layer utilities {
+  .text-gradient {
+    background-image: linear-gradient(120deg, #6366f1, #06b6d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .shimmer-text {
+    background-image: linear-gradient(
+      90deg,
+      currentColor 0%,
+      currentColor 40%,
+      rgb(161 161 170 / 0.5) 50%,
+      currentColor 60%,
+      currentColor 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    @apply animate-shimmer;
+  }
 }
 
-#root {
-  @apply min-h-screen;
+/* Markdown answers */
+.markdown {
+  @apply break-words text-[15px] leading-7 text-zinc-800 dark:text-zinc-200;
 }
-
-.panel {
-  @apply rounded-3xl border border-line bg-panel/85 shadow-glow backdrop-blur;
+.markdown > * + * {
+  @apply mt-3;
 }
-
-.field {
-  @apply w-full rounded-2xl border border-line bg-white/5 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-500 focus:border-accent;
+.markdown strong {
+  @apply font-semibold text-zinc-900 dark:text-white;
 }
-
-.button-primary {
-  @apply inline-flex items-center justify-center rounded-2xl bg-accent px-4 py-3 text-sm font-semibold text-slate-950 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-70;
+.markdown ul {
+  @apply list-disc space-y-1 pl-5 marker:text-zinc-400;
 }
-
-.button-muted {
-  @apply inline-flex items-center justify-center rounded-2xl border border-line bg-white/5 px-4 py-3 text-sm font-medium text-white transition hover:bg-white/10;
+.markdown ol {
+  @apply list-decimal space-y-1 pl-5 marker:text-zinc-400;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  @apply mt-5 font-semibold text-zinc-900 dark:text-white;
+}
+.markdown h1 {
+  @apply text-xl;
+}
+.markdown h2 {
+  @apply text-lg;
+}
+.markdown h3 {
+  @apply text-base;
+}
+.markdown a {
+  @apply text-brand-600 underline underline-offset-2 dark:text-brand-400;
+}
+.markdown code {
+  @apply rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-[13px] dark:bg-zinc-800;
+}
+.markdown pre {
+  @apply overflow-x-auto rounded-xl bg-zinc-100 p-4 dark:bg-zinc-900;
+}
+.markdown pre code {
+  @apply bg-transparent p-0;
+}
+.markdown table {
+  @apply block w-full overflow-x-auto border-collapse text-sm;
+}
+.markdown th,
+.markdown td {
+  @apply border border-zinc-200 px-3 py-1.5 text-left dark:border-zinc-800;
+}
+.markdown blockquote {
+  @apply border-l-2 border-brand-500 pl-4 text-zinc-600 dark:text-zinc-400;
 }

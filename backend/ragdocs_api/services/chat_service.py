@@ -1,10 +1,6 @@
 from ..models import ChatMessage
 from .document_service import ensure_documents_indexed
-from .gemini_service import (
-    get_gemini_client,
-    get_gemini_config,
-    get_gemini_generation_config,
-)
+from .llm_service import AUTO_MODEL, generate_answer
 from .pdf_service import is_meaningful_text
 from .vector_store_service import get_vector_store
 
@@ -98,7 +94,7 @@ def retrieve_relevant_chunks(user_id, question, document_ids=None):
     return (filtered_documents or unique_documents)[:6]
 
 
-def answer_question(user_id, question, document_ids=None):
+def answer_question(user_id, question, document_ids=None, model_id=AUTO_MODEL):
     ensure_documents_indexed(user_id, document_ids)
     documents = retrieve_relevant_chunks(user_id, question, document_ids)
 
@@ -106,6 +102,7 @@ def answer_question(user_id, question, document_ids=None):
         return {
             "answer": "I could not find matching content in your uploaded PDFs yet. Upload a document or ask about a different section.",
             "sources": [],
+            "model": None,
         }
 
     context = "\n\n".join(
@@ -138,17 +135,12 @@ Question:
 {question}
 """.strip()
 
-    client = get_gemini_client()
-    config = get_gemini_config()
-    response = client.models.generate_content(
-        model=config["model"],
-        contents=prompt,
-        config=get_gemini_generation_config(),
-    )
-    answer = (response.text or "").strip()
-    if not answer:
-        raise ValueError("Gemini returned an empty response.")
+    generated = generate_answer(prompt, model_id)
 
-    return {"answer": answer, "sources": build_source_payload(documents)}
+    return {
+        "answer": generated["text"],
+        "sources": build_source_payload(documents),
+        "model": generated["model"],
+    }
 
 

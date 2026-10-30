@@ -1,3 +1,5 @@
+import { CheckCircle2 } from "lucide-react";
+
 function NoticeBanner({ notice }) {
   if (!notice?.message) {
     return null;
@@ -5,12 +7,10 @@ function NoticeBanner({ notice }) {
 
   return (
     <div
-      className={`fixed right-5 top-5 z-50 rounded-2xl border px-4 py-3 text-sm shadow-glow ${
-        notice.type === "success"
-          ? "border-emerald-400/30 bg-emerald-500/15 text-emerald-100"
-          : "border-sky-400/30 bg-sky-500/15 text-sky-100"
-      }`}
+      role="status"
+      className="fixed right-4 top-4 z-[60] flex animate-fade-in items-center gap-2 rounded-xl border border-zinc-200 bg-white px-3.5 py-2.5 text-sm shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
     >
+      <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
       {notice.message}
     </div>
   );

@@ -6,6 +6,12 @@ from flask_jwt_extended import get_jwt_identity, jwt_required
 from ..extensions import db
 from ..models import ChatMessage, Document
 from ..services.chat_service import answer_question
+from ..services.llm_service import (
+    AUTO_MODEL,
+    get_auto_chain,
+    get_available_models,
+    is_selectable_model,
+)
 from ..utils.responses import error_response
 
 chat_bp = Blueprint("chat", __name__)
@@ -14,6 +20,12 @@ chat_bp = Blueprint("chat", __name__)
 @chat_bp.get("/health")
 def health():
     return jsonify({"status": "ok"})
+
+
+@chat_bp.get("/config")
+@jwt_required()
+def config():
+    return jsonify({"models": get_available_models(), "auto_models": get_auto_chain()})
 
 
 @chat_bp.get("/chat/history")
@@ -57,9 +69,12 @@ def chat():
     data = request.get_json() or {}
     question = (data.get("question") or "").strip()
     document_ids = data.get("document_ids") or []
+    model_id = data.get("model") or AUTO_MODEL
 
     if not question:
         return error_response("Question is required.")
+    if not is_selectable_model(model_id):
+        return error_response("The selected model is not available.")
     if not isinstance(document_ids, list):
         return error_response("document_ids must be a list.")
 
@@ -76,7 +91,7 @@ def chat():
             return error_response("One or more selected documents are invalid.", 403)
 
     try:
-        result = answer_question(user_id, question, document_ids)
+        result = answer_question(user_id, question, document_ids, model_id)
     except Exception as exc:
         return error_response(f"RAG request failed: {exc}", 500)
 
@@ -95,5 +110,6 @@ def chat():
             "answer": result["answer"],
             "sources": result["sources"],
             "message_id": message.id,
+            "model": result["model"],
         }
     )
