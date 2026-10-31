@@ -1,8 +1,10 @@
+import time
+
 from ..models import ChatMessage
 from .document_service import ensure_documents_indexed
-from .llm_service import AUTO_MODEL, generate_answer
+from .llm_service import AUTO_MODEL, get_model_label, stream_answer
 from .pdf_service import is_meaningful_text
-from .vector_store_service import get_vector_store
+from .vector_store_service import get_embedding_model, get_vector_store
 
 
 def get_recent_memory(user_id, limit=5):
@@ -44,7 +46,7 @@ def build_source_payload(documents):
     return sources
 
 
-def retrieve_relevant_chunks(user_id, question, document_ids=None):
+def retrieve_relevant_chunks(user_id, query_embedding, document_ids=None):
     store = get_vector_store(user_id)
     search_filter = None
     if document_ids:
@@ -54,8 +56,8 @@ def retrieve_relevant_chunks(user_id, question, document_ids=None):
 
     try:
         documents.extend(
-            store.max_marginal_relevance_search(
-                question,
+            store.max_marginal_relevance_search_by_vector(
+                query_embedding,
                 k=6,
                 fetch_k=18,
                 lambda_mult=0.65,
@@ -66,15 +68,16 @@ def retrieve_relevant_chunks(user_id, question, document_ids=None):
         pass
 
     try:
-        scored_documents = store.similarity_search_with_score(
-            question,
-            k=8,
-            filter=search_filter,
+        documents.extend(
+            store.similarity_search_by_vector(
+                query_embedding,
+                k=8,
+                filter=search_filter,
+            )
         )
-        documents.extend([doc for doc, _score in scored_documents])
     except Exception:
         if not documents:
-            documents.extend(store.similarity_search(question, k=8, filter=search_filter))
+            raise
 
     seen = set()
     unique_documents = []
@@ -94,17 +97,7 @@ def retrieve_relevant_chunks(user_id, question, document_ids=None):
     return (filtered_documents or unique_documents)[:6]
 
 
-def answer_question(user_id, question, document_ids=None, model_id=AUTO_MODEL):
-    ensure_documents_indexed(user_id, document_ids)
-    documents = retrieve_relevant_chunks(user_id, question, document_ids)
-
-    if not documents:
-        return {
-            "answer": "I could not find matching content in your uploaded PDFs yet. Upload a document or ask about a different section.",
-            "sources": [],
-            "model": None,
-        }
-
+def build_prompt(user_id, question, documents):
     context = "\n\n".join(
         [
             (
@@ -116,7 +109,7 @@ def answer_question(user_id, question, document_ids=None, model_id=AUTO_MODEL):
     )
     memory = get_recent_memory(user_id)
 
-    prompt = f"""
+    return f"""
 You are RAGDocs AI, a helpful PDF assistant.
 Answer only from the provided PDF context.
 Write one clear, complete answer in plain English.
@@ -135,12 +128,84 @@ Question:
 {question}
 """.strip()
 
-    generated = generate_answer(prompt, model_id)
 
-    return {
-        "answer": generated["text"],
-        "sources": build_source_payload(documents),
-        "model": generated["model"],
-    }
+def step_event(step_id, label, status, started_at=None, detail=None):
+    event = {"type": "step", "id": step_id, "label": label, "status": status}
+    if started_at is not None:
+        event["duration_ms"] = round((time.perf_counter() - started_at) * 1000)
+    if detail:
+        event["detail"] = detail
+    return event
+
+
+def stream_question(user_id, question, document_ids=None, model_id=AUTO_MODEL):
+    """Run the RAG pipeline, yielding each real stage and answer token as it happens."""
+    ensure_documents_indexed(user_id, document_ids)
+
+    label = "Embedding query"
+    yield step_event("embed", label, "running")
+    started_at = time.perf_counter()
+    query_embedding = get_embedding_model().embed_query(question)
+    yield step_event("embed", label, "done", started_at)
+
+    label = "Retrieving context"
+    yield step_event("retrieve", label, "running")
+    started_at = time.perf_counter()
+    documents = retrieve_relevant_chunks(user_id, query_embedding, document_ids)
+    file_count = len({doc.metadata.get("document_id") for doc in documents})
+    yield step_event(
+        "retrieve",
+        label,
+        "done",
+        started_at,
+        f"{len(documents)} {'chunk' if len(documents) == 1 else 'chunks'} from {file_count} "
+        f"{'document' if file_count == 1 else 'documents'}",
+    )
+
+    if not documents:
+        yield {
+            "type": "token",
+            "text": "I could not find matching content in your uploaded PDFs yet. Upload a document or ask about a different section.",
+        }
+        return
+
+    yield {"type": "sources", "sources": build_source_payload(documents)}
+
+    prompt = build_prompt(user_id, question, documents)
+    step_id = label = started_at = None
+    attempt = 0
+    for event in stream_answer(prompt, model_id):
+        if event["type"] == "model_start":
+            attempt += 1
+            step_id = f"llm-{attempt}"
+            label = f"Sending to {get_model_label(event['model'])}"
+            started_at = time.perf_counter()
+            yield step_event(step_id, label, "running")
+            current_model = event["model"]
+        elif event["type"] == "model_failed":
+            yield step_event(
+                step_id, label, "error", started_at, "Failed before answering"
+            )
+            started_at = None
+        else:
+            if started_at is not None:
+                # The step ends at the first token: the model has started answering.
+                yield step_event(step_id, label, "done", started_at)
+                yield {"type": "model", "model": current_model}
+                started_at = None
+            yield event
+
+
+def answer_question(user_id, question, document_ids=None, model_id=AUTO_MODEL):
+    tokens, sources, model = [], [], None
+    for event in stream_question(user_id, question, document_ids, model_id):
+        if event["type"] == "token":
+            tokens.append(event["text"])
+        elif event["type"] == "sources":
+            sources = event["sources"]
+        elif event["type"] == "model":
+            model = event["model"]
+
+    return {"answer": "".join(tokens).strip(), "sources": sources, "model": model}
 
 

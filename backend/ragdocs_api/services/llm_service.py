@@ -1,5 +1,6 @@
 import os
 import re
+import time
 from functools import lru_cache
 
 from openai import OpenAI
@@ -20,7 +21,8 @@ DEFAULT_NEBIUS_MODELS = (
 )
 DEFAULT_OPENAI_MODELS = "gpt-4.1"
 
-THINK_BLOCK = re.compile(r"<think>.*?</think>", re.DOTALL)
+WORD_PIECE = re.compile(r"\s*\S+\s*")
+GEMINI_WORD_DELAY_SECONDS = 0.012
 
 
 def get_env_list(name, default):
@@ -115,50 +117,56 @@ def get_openai_compatible_client(api_key, base_url):
     )
 
 
-def generate_with_gemini(model_name, prompt):
-    response = get_gemini_client().models.generate_content(
+def get_model_label(model_id):
+    return model_id.split(":", 1)[-1].rsplit("/", 1)[-1]
+
+
+def stream_with_gemini(model_name, prompt):
+    stream = get_gemini_client().models.generate_content_stream(
         model=model_name,
         contents=prompt,
         config=get_gemini_generation_config(),
     )
-    return response.text or ""
+    # Gemini sends large blocks, so release each one word by word like the other models.
+    for chunk in stream:
+        for word in WORD_PIECE.findall(chunk.text or ""):
+            yield word
+            time.sleep(GEMINI_WORD_DELAY_SECONDS)
 
 
-def generate_with_openai_compatible(provider, model_name, prompt):
+def stream_with_openai_compatible(provider, model_name, prompt):
     settings = get_gemini_config()
     params = {
         "model": model_name,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": settings["temperature"],
+        "stream": True,
     }
 
     if provider == "nebius":
         base_url = os.getenv("NEBIUS_BASE_URL", "").strip() or DEFAULT_NEBIUS_BASE_URL
         params["max_tokens"] = settings["max_output_tokens"]
+        params["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
     else:
         base_url = None
         params["max_completion_tokens"] = settings["max_output_tokens"]
 
     client = get_openai_compatible_client(get_provider_api_key(provider), base_url)
-    response = client.chat.completions.create(**params)
-    return THINK_BLOCK.sub("", response.choices[0].message.content or "")
+    for chunk in client.chat.completions.create(**params):
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
 
 
-def generate_with_model(model_id, prompt):
+def stream_with_model(model_id, prompt):
     provider, model_name = model_id.split(":", 1)
     if provider == "gemini":
-        text = generate_with_gemini(model_name, prompt)
-    else:
-        text = generate_with_openai_compatible(provider, model_name, prompt)
-
-    text = text.strip()
-    if not text:
-        raise ValueError(f"{model_name} returned an empty response.")
-    return text
+        return stream_with_gemini(model_name, prompt)
+    return stream_with_openai_compatible(provider, model_name, prompt)
 
 
-def generate_answer(prompt, model_id=AUTO_MODEL):
-    """Auto tries primary then secondary. A model the user picked gets no fallback."""
+def stream_answer(prompt, model_id=AUTO_MODEL):
+    """Yield model and token events. Auto falls back only before the first token,
+    since text already sent to the user can't be taken back."""
     chain = get_auto_chain() if model_id == AUTO_MODEL else [model_id]
     if not chain:
         raise ValueError(
@@ -167,9 +175,21 @@ def generate_answer(prompt, model_id=AUTO_MODEL):
 
     last_error = None
     for candidate in chain:
+        yield {"type": "model_start", "model": candidate}
+        started = False
         try:
-            return {"text": generate_with_model(candidate, prompt), "model": candidate}
+            for text in stream_with_model(candidate, prompt):
+                started = True
+                yield {"type": "token", "text": text}
+            if started:
+                return
+            last_error = ValueError(
+                f"{get_model_label(candidate)} returned an empty response."
+            )
         except Exception as exc:
+            if started:
+                raise
             last_error = exc
+        yield {"type": "model_failed", "model": candidate}
 
     raise last_error

@@ -1,5 +1,10 @@
 from flask import Blueprint, jsonify, request
-from flask_jwt_extended import create_access_token
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    get_jwt_identity,
+    jwt_required,
+)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db
@@ -51,10 +56,20 @@ def login():
     if not user or not check_password_hash(user.password_hash, password):
         return error_response("Invalid email or password.", 401)
 
-    token = create_access_token(identity=str(user.id))
     return jsonify(
         {
-            "token": token,
+            "token": create_access_token(identity=str(user.id)),
+            "refresh_token": create_refresh_token(identity=str(user.id)),
             "user": {"id": user.id, "name": user.name, "email": user.email},
         }
     )
+
+
+@auth_bp.post("/auth/refresh")
+@jwt_required(refresh=True)
+def refresh():
+    user = db.session.get(User, int(get_jwt_identity()))
+    if not user:
+        return error_response("This account no longer exists.", 401)
+
+    return jsonify({"token": create_access_token(identity=str(user.id))})

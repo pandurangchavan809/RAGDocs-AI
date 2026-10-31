@@ -21,6 +21,7 @@ function App() {
         form={app.form}
         notice={app.notice}
         onAuthModeChange={app.setAuthMode}
+        onDemoLogin={app.handleDemoLogin}
         onFormChange={(field, value) =>
           app.setForm((current) => ({ ...current, [field]: value }))
         }

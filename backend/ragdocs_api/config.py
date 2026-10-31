@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -83,5 +84,7 @@ class Config:
     SQLALCHEMY_ENGINE_OPTIONS = build_engine_options()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "change-this-secret")
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(minutes=15)
+    JWT_REFRESH_TOKEN_EXPIRES = timedelta(days=30)
     MAX_CONTENT_LENGTH = 20 * 1024 * 1024
     CORS_ORIGINS = get_cors_origins()

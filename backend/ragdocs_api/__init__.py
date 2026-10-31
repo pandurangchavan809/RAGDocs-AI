@@ -5,6 +5,7 @@ from .config import Config
 from .errors import register_error_handlers
 from .extensions import db, jwt
 from .routes import register_blueprints
+from .services.demo_service import ensure_demo_user
 
 
 def create_app():
@@ -30,5 +31,6 @@ def create_app():
 
     with app.app_context():
         db.create_all()
+        ensure_demo_user()
 
     return app

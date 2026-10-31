@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Button from "../ui/Button";
 import Composer from "./Composer";
 import EmptyState from "./EmptyState";
-import { AssistantMessage, PendingAnswer, UserMessage } from "./Messages";
+import { AssistantMessage, UserMessage } from "./Messages";
 import ModelPicker from "./ModelPicker";
 
 function getDocumentsLabel(total, selected) {
@@ -15,10 +15,10 @@ function getDocumentsLabel(total, selected) {
 }
 
 function ChatView({ app, onOpenSidebar, onOpenUpload }) {
-  const { config, documents, error, history, pendingQuestion, selectedDocs } = app;
+  const { config, documents, error, history, selectedDocs, streaming } = app;
   const scrollRef = useRef(null);
   const [pinned, setPinned] = useState(true);
-  const hasMessages = history.length > 0 || Boolean(pendingQuestion);
+  const hasMessages = history.length > 0 || Boolean(streaming);
 
   // Follow new messages only while the user is at the bottom.
   useEffect(() => {
@@ -26,7 +26,7 @@ function ChatView({ app, onOpenSidebar, onOpenUpload }) {
     if (element && pinned) {
       element.scrollTop = element.scrollHeight;
     }
-  }, [history, pendingQuestion, pinned]);
+  }, [history, streaming, pinned]);
 
   const handleScroll = () => {
     const element = scrollRef.current;
@@ -77,10 +77,10 @@ function ChatView({ app, onOpenSidebar, onOpenUpload }) {
                 <AssistantMessage item={item} models={config?.models} />
               </article>
             ))}
-            {pendingQuestion && (
+            {streaming && (
               <>
-                <UserMessage text={pendingQuestion} />
-                <PendingAnswer />
+                <UserMessage text={streaming.question} />
+                <AssistantMessage item={streaming} models={config?.models} live />
               </>
             )}
           </div>
@@ -131,6 +131,7 @@ function ChatView({ app, onOpenSidebar, onOpenUpload }) {
           value={app.question}
           onChange={app.setQuestion}
           onSend={send}
+          onStop={app.stopGenerating}
         />
       </div>
     </main>

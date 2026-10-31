@@ -1,387 +1,438 @@
-# RAGDocs AI Interview Guide
-
-## 1. One-line project intro
-
-RAGDocs AI is a full-stack RAG-based PDF assistant where users upload PDFs, the backend chunks and embeds the text, stores embeddings in Chroma, retrieves the most relevant chunks for a question, and uses Gemini to generate grounded answers with source excerpts.
-
-## 2. 30-second interviewer explanation
-
-I built a PDF question-answering system using React on the frontend and Flask on the backend. Users can register, upload PDFs, and ask questions across one document or multiple documents. On the backend, I extract PDF text, clean it, split it into chunks, generate Gemini embeddings, store them in ChromaDB, retrieve relevant chunks using MMR plus similarity search, and then send the retrieved context to Gemini with a low temperature so answers stay factual and consistent.
-
-## 3. 60-90 second detailed explanation
+# RAGDocs AI: Interview Guide
+
+Use this to explain the project and to defend its design under deep questioning. Answers are written in the first person, so you can say them aloud in your own words.
 
-The project is a user-specific RAG pipeline, not just a generic chatbot.
+Three rules for using it:
+- Separate what the project does from what you would add. Interviewers test this by asking follow-ups.
+- Admit limitations before you're asked. It shows judgement.
+- Don't quote a benchmark or price you haven't checked. Figures here are either read from the code, measured once on this machine, or marked as estimates.
 
-1. A user logs in with JWT authentication.
-2. The user uploads a PDF.
-3. The backend extracts readable text from each page using `PyPDF2`.
-4. The text is normalized and split into meaningful chunks.
-5. Each chunk is embedded with Gemini embedding model `gemini-embedding-2`.
-6. Embeddings are stored in a user-specific Chroma vector store.
-7. When the user asks a question, the app retrieves relevant chunks using MMR search and similarity search.
-8. Those chunks, along with recent chat memory, are inserted into a zero-shot prompt.
-9. Gemini `gemini-2.5-flash` generates the answer.
-10. The answer and source excerpts are saved in the SQL database and shown in the UI.
+## Part 1: Explaining the project
 
-## 4. Architecture in simple words
+### 30-second version
 
-- Frontend: React + Vite + Tailwind + Axios
-- Backend: Flask + SQLAlchemy + Flask-JWT-Extended
-- LLM: Google Gemini via the official `google-genai` SDK
-- Vector DB: ChromaDB
-- Embeddings: Gemini embeddings
-- PDF parsing: `PyPDF2`
-- Database: SQLite by default, MySQL supported through environment config
+> RAGDocs is a full-stack RAG application for PDFs. Users upload documents, and I extract, clean and chunk the text, embed it with Gemini, and store it in a per-user Chroma database. For each question I retrieve the most relevant chunks using MMR, build a grounded prompt, and generate an answer with a model from Nebius, Gemini or OpenAI. The user gets the answer along with the file and page it came from.
 
-## 5. Exact LLM, RAG, and LangChain-related parameters used in this project
+### 2-minute version
 
-### LLM generation parameters
+> The frontend is React with Vite and Tailwind, and the backend is Flask with SQLAlchemy and JWT authentication.
+>
+> Ingestion runs when a PDF is uploaded. I save the file under a UUID name, read each page with PyPDF2, and clean the text by rebuilding broken lines and removing low-signal fragments. Then I build sentence-based chunks of up to 1050 characters, with one sentence of overlap. Each chunk is embedded and stored in Chroma with metadata such as document id and page number.
+>
+> On each question, I first make sure the in-scope documents are indexed. Then I run MMR, with `k=6` and `fetch_k=18`, to get relevant but varied chunks. I remove duplicates, filter noise and keep six. The prompt contains strict rules, the last five exchanges, those chunks and the question.
+>
+> Generation goes through a provider layer. Auto tries the primary model and falls back to the secondary if it fails before its first token, while a model the user chooses has no fallback. Temperature is 0.1 and model thinking is off. Progress steps and answer tokens stream to the browser over Server-Sent Events, then the answer and sources are saved to SQL and displayed with their citations.
 
-| Parameter | Value in project | Why it is used |
-|---|---:|---|
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Fast generation model for chatbot responses |
-| `GEMINI_TEMPERATURE` | `0.1` | Low randomness for factual RAG answers |
-| `GEMINI_MAX_OUTPUT_TOKENS` | `1536` | Keeps answers detailed but bounded |
-| `GEMINI_THINKING_BUDGET` | `256` | Enables a moderate reasoning budget in Gemini 2.5 |
-| `response_mime_type` | `text/plain` | Forces plain-text output |
+### What makes it more than a demo
 
-### Embedding and vector parameters
+- Per-user isolation across SQL, files and vectors
+- Index versioning with automatic re-indexing
+- Multi-provider generation with fallback
+- Source attribution down to the page
 
-| Parameter | Value in project | Why it is used |
-|---|---:|---|
-| `EMBEDDING_MODEL` | `gemini-embedding-2` | Creates vector embeddings for chunks and queries |
-| Embedding style for documents | `title: pdf chunk | text: {text}` | Adds a small task hint for chunk embeddings |
-| Embedding style for queries | `task: question answering | query: {text}` | Helps align query embeddings to retrieval use case |
-| Vector store | Chroma | Stores and searches embeddings |
-| Collection naming | `documents_{embedding_model}_{index_version}` | Keeps index versions separated |
-| Index version | `ragdocs_v2` | Supports re-indexing when chunking or metadata changes |
+### What it is not
 
-### Retrieval parameters
+It isn't production-ready at scale. Ingestion is synchronous, there is no automated evaluation, and retrieval has no reranking or keyword search. Part 11 covers how I would close those gaps.
 
-| Parameter | Value in project | Why it is used |
-|---|---:|---|
-| MMR `k` | `6` | Final diverse chunks from MMR retrieval |
-| MMR `fetch_k` | `18` | Candidate pool before diversity selection |
-| MMR `lambda_mult` | `0.65` | Balances similarity and diversity |
-| Similarity search `k` | `8` | Backup retrieval to catch additional relevant chunks |
-| Final returned chunks | up to `6` | Keeps prompt context compact |
-| Document filter | selected `document_ids` or all docs | Supports focused or cross-document querying |
-| Deduplication key | `document_id + chunk_index` | Prevents duplicate chunks in context |
+## Part 2: Exact numbers to remember
 
-### Chunking and PDF preprocessing parameters
+| Item | Value | Where |
+|---|---|---|
+| Chunk size | Max 1050 characters | `pdf_service.split_text` |
+| Overlap | 1 sentence | `pdf_service.split_text` |
+| Paragraph minimum | 10 words | `normalize_pdf_text` |
+| Chunk minimum | 18 words | `is_meaningful_text` |
+| Minimum letter ratio | 45% | `is_meaningful_text` |
+| Embedding model | `gemini-embedding-2` | `.env` |
+| Embedding size | 3072 dimensions (measured) | Live call |
+| Embedding latency | About 0.64 s per call (5 calls, one machine) | Live call |
+| MMR | `k=6`, `fetch_k=18`, `lambda_mult=0.65` | `chat_service` |
+| Similarity search | `k=8` | `chat_service` |
+| Final context | Up to 6 chunks, so about 6300 characters at most | `chat_service` |
+| Source excerpt | 260 characters | `build_source_payload` |
+| Prompt memory | Last 5 Q&A pairs | `get_recent_memory` |
+| History shown | Last 20 | `routes/chat.py` |
+| Temperature | 0.1 | `.env` |
+| Max output tokens | 1536 | `.env` |
+| Thinking | Off: Nebius `enable_thinking: false`, Gemini `thinking_budget=0` | `llm_service`, `gemini_service` |
+| Streaming | SSE, `POST /api/chat/stream` | `routes/chat.py` |
+| LLM timeout | 45 s, no SDK retries | `llm_service` |
+| Upload limit | 20 MB | `config.py` |
+| Access token lifetime | 15 minutes | `config.py` |
+| Refresh token lifetime | 30 days | `config.py` |
+| gunicorn timeout | 120 s | `Procfile` |
 
-| Parameter | Value in project | Why it is used |
-|---|---:|---|
-| `max_chunk_chars` | `1050` | Keeps chunks small enough for retrieval and prompt context |
-| `overlap_sentences` | `1` | Preserves continuity between neighboring chunks |
-| Paragraph cleaning threshold | `min_words=10` in one preprocessing stage | Removes tiny noisy paragraphs |
-| Meaningful chunk threshold | `min_words=18` | Filters low-signal text before indexing and answer generation |
-| Letter ratio threshold | `0.45` | Rejects noisy text with too many non-letter characters |
-| Sentence split rule | regex on `.`, `!`, `?` | Makes chunking more natural than fixed-length splitting |
+`top_p`, frequency penalty and presence penalty aren't set, so providers use their defaults.
 
-### Memory and chat parameters
+## Part 3: Why each technology
 
-| Parameter | Value in project | Why it is used |
-|---|---:|---|
-| Recent memory used in prompt | last `5` messages | Gives short conversational continuity |
-| Chat history API response | last `20` messages | Keeps UI history manageable |
-| Sources per answer | based on unique retrieved chunks | Shows explainability in the UI |
+**Why Flask and not FastAPI or Django?**
+> Flask is small and explicit, and this API needs only a few routes. Django brings an admin and ORM conventions I didn't need. FastAPI would give me async support and automatic validation, and it would be my choice for streaming and many slow concurrent LLM calls. That is a real advantage I gave up, since each request here ties up a worker.
 
-### App and deployment-related parameters
+**Why React with Vite?**
+> The chat interface has lots of changing state, so a component model fits well. Vite gives a fast dev server and a simple build.
 
-| Parameter | Value in project | Why it is used |
-|---|---:|---|
-| Max upload size | `20 MB` | Basic upload safety |
-| `FRONTEND_URL` | `http://localhost:5173` by default | CORS control |
-| `DB_POOL_RECYCLE_SECONDS` | `240` | MySQL connection stability |
-| `DB_POOL_TIMEOUT_SECONDS` | `30` | MySQL connection timeout |
-| Frontend API URL | `http://localhost:5000/api` | Frontend-backend communication |
+**Why Tailwind with no component library?**
+> It keeps the design consistent and the bundle free of unused components. The trade-off is that I wrote my own dialog and picker, including keyboard handling.
 
-## 6. What role LangChain actually plays here
+**Why Chroma and not Pinecone, FAISS, Qdrant or pgvector?**
 
-This is an important interview point: the project does not use a full LangChain chain like `RetrievalQA` or an agent.
+| Option | Strength | Why not here |
+|---|---|---|
+| Chroma | Local, persistent, metadata filters, easy setup | Chosen. Weak for multi-server deployment as I use it |
+| FAISS | Very fast library | I'd have to build persistence and metadata filtering myself |
+| Pinecone | Managed and scalable | Paid external service, unnecessary at this size |
+| Qdrant | Strong filtering, scales well | Extra server to run. My likely next step |
+| pgvector | Vectors beside relational data | I'd need Postgres, and this project uses MySQL |
 
-LangChain is used mainly for:
+**Why LangChain in such a small role?**
+> I use only `langchain-chroma` and the `Embeddings` interface. I wrote retrieval, prompting and fallback myself because each step stays visible and easy to debug, and I don't depend on a framework's hidden prompts. The trade-off is writing more code myself.
 
-- `langchain-chroma` to integrate with Chroma
-- the `Embeddings` interface so a custom Gemini embedding class can plug into Chroma cleanly
+**Why PyPDF2?**
+> It's simple and handles page-by-page text. Honest point: PyPDF2 is no longer developed, because work moved to `pypdf`, so I'd migrate. For complex layouts or tables I'd evaluate PyMuPDF or `pdfplumber`.
 
-Strong answer:
+**Why JWT and not sessions?**
+> JWTs are stateless, which suits a separate frontend and API. The trade-off is that tokens are hard to revoke before they expire, so I keep access tokens short and use a refresh token to renew them.
 
-> I used LangChain as a light integration layer, mainly for the Chroma vector store and embeddings interface. The retrieval and prompting logic are custom Python functions, so I kept the pipeline transparent and easy to explain.
+**Why two tokens?**
+> The access token goes with every request, so it's the most exposed, and a 15-minute lifetime limits the damage if it leaks. The refresh token goes only to `/auth/refresh` and lasts 30 days, so users stay logged in. The library rejects each token type on the other's routes.
 
-## 7. Prompting style used in this project
+**Does renewal slow the app down?**
+> Normal requests pay nothing. Renewal runs only after a 401, about once per 15 minutes of use. Parallel failures share one refresh promise, so startup's several requests cause one call, not several.
 
-This project uses zero-shot prompting.
+**What are the weaknesses of your refresh design?**
+> I don't rotate refresh tokens or keep a server-side blocklist, so a stolen one works for up to 30 days, and logout only clears the browser. Storing it in `localStorage` also exposes it to XSS. For production I'd use an HttpOnly cookie, rotation with reuse detection, and a revocation table. That adds one database check per refresh, not per request.
 
-Why it is zero-shot:
+**Why SQL as well as a vector database?**
+> Accounts and history need constraints and exact queries, while vectors need similarity search. Each store does what it's good at. The cost is keeping them in step, which `ensure_documents_indexed` handles.
 
-- The prompt gives instructions only
-- There are no example question-answer pairs
-- There is no few-shot prompt template
-- The retrieved chunks are inserted directly as context
+**Why MySQL and SQLite?**
+> SQLAlchemy lets the same models run on both. SQLite needs no setup for local work, and MySQL supports concurrent use in production.
 
-Core prompt behavior in the project:
+## Part 4: Why these LLMs
 
-- answer only from the provided PDF context
-- write one clear answer in plain English
-- ignore broken fragments and repeated template text
-- if asked about the whole document, first summarize in 2-4 sentences, then add key points
-- if context is incomplete, say what is clear and what is uncertain
-- do not invent unsupported details
+**Why three providers?**
+> One provider is a single point of failure for generation. Separate providers give independent failure domains, and users can compare answers on the same retrieved context.
 
-Strong answer:
+**Why Nebius?**
+> It serves open-weight models through an OpenAI-compatible API, so I reuse one client by changing the base URL and key. It also gives me non-closed models without running GPUs.
 
-> The chatbot uses zero-shot prompting with retrieved context. I did not use few-shot examples because the task is document-grounded QA, and a direct instruction prompt is simpler, cheaper, and easier to control.
+**Why Nemotron as primary and Gemini as secondary?**
+> Nemotron Lightning is a fast model for this kind of grounded answering, where the context does most of the work. Gemini is the natural fallback: a different provider, and the key already has to be present for embeddings.
 
-## 8. Best answer for the temperature interview question
+Before saying this, confirm it's your reasoning, and be ready with measured latency and cost figures, because the repo contains no benchmarks.
 
-If they ask:
+**Why Qwen and gpt-4.1 as manual choices?**
+> They give a larger open-weight option and a widely known closed model to compare against. Neither is in the Auto chain, which keeps fallback simple and predictable.
 
-> What temperature do you use for a RAG chatbot?
+**Why embed with Gemini even when another model answers?**
+> Embedding and generation are independent. The only rule is that documents and queries must use the same embedding model. Changing it per question would make vectors incomparable. The downside is that Gemini is required for all retrieval.
 
-Say:
+**Why temperature 0.1 and not 0?**
+> Grounded answering needs consistency rather than creativity, so I keep it low. The difference between 0 and 0.1 is small. The value should really be chosen through evaluation.
 
-> In this project I used `temperature=0.1` because it is a RAG-based PDF assistant. For RAG systems I usually keep temperature between `0.0` and `0.3` so the model stays factual and consistent with the retrieved documents.
+**What does low temperature not do?**
+> It doesn't prevent hallucination. It reduces randomness. A model can consistently give the same wrong answer.
 
-Easy memory trick:
+**Why turn thinking off?**
+> Retrieval already supplies the facts, so grounded answering rarely needs long hidden reasoning, and that reasoning delays the first word and can add cost. In one test, Nemotron sent 280 reasoning chunks by default and none with `enable_thinking: false`, and its first word came in 0.81 s instead of 2.43 s. That's a single short prompt, so it shows direction, not a benchmark. The trade-off is weaker results on questions needing multi-step reasoning across chunks. I'd check that with an evaluation set.
 
-- `0.0` -> highly deterministic, fact-focused
-- `0.1 to 0.3` -> best for RAG and QA systems
-- `0.7` -> more natural conversation
-- `1.0+` -> more creative generation
+**Does each provider disable it the same way?**
+> No. Nebius takes `chat_template_kwargs`, passed through the OpenAI SDK's `extra_body`. Gemini 2.5 takes a thinking budget of 0. `gpt-4.1` has no thinking mode, so I send nothing.
 
-Short version:
+**Does fallback handle a bad answer?**
+> No. It triggers only on an exception or an empty reply before the first token. A confident wrong answer doesn't trigger it, and that would need answer checking.
 
-> I typically use around `0.1` or `0.2` for RAG, and higher values only for creative or open-ended tasks.
+**Why does fallback stop after the first token?**
+> Text the user has already read can't be taken back, and mixing two models in one answer could contradict itself. A mid-answer failure shows an error and saves nothing.
 
-## 9. How to explain your retrieval strategy
+## Part 5: RAG fundamentals
 
-Strong answer:
+**What is RAG?**
+> Retrieval-Augmented Generation fetches relevant information at question time and gives it to the model as context. It allows answers from private, changing data without training a model.
 
-> I used a two-step retrieval style. First, I try Max Marginal Relevance search to get relevant but non-redundant chunks. Then I also run similarity search as a backup. After that I deduplicate chunks and keep the best six for the final prompt. This improves diversity while still staying relevant.
+**RAG or fine-tuning?**
+> RAG is for knowledge that changes or must be cited. Fine-tuning changes behaviour, such as style or format. Fine-tuning a model on my documents wouldn't give page citations or handle a new upload immediately. The two can be combined.
 
-Why MMR matters:
+**Why not send the whole PDF to the model?**
+> Cost and latency grow with size, context windows are finite, and irrelevant text can reduce quality. With many documents it stops being possible at all. Large context windows reduce this problem for single short documents, but they don't remove it.
 
-- pure similarity search can return many nearly identical chunks
-- MMR improves coverage of different parts of the document
-- this is especially useful when multiple chunks contain similar wording
+**What is an embedding?**
+> A list of numbers representing meaning, so texts with similar meaning sit close together. It enables finding "car repair costs" from "automobile maintenance expenses" despite no shared words.
 
-## 10. How to explain memory
+**Cosine similarity, dot product or Euclidean distance?**
+> Cosine compares direction, dot product also includes length, and Euclidean measures straight-line distance. For unit-length vectors all three give the same ranking. My code doesn't set a metric, so Chroma's default, L2, applies.
 
-Strong answer:
+**Bi-encoder or cross-encoder?**
+> A bi-encoder embeds question and document separately, so vectors can be pre-computed and searched quickly. A cross-encoder reads the pair together, which is more accurate but too slow for every document. That's why a common design retrieves with a bi-encoder and reranks with a cross-encoder.
 
-> I store chat history in SQL and inject only the latest five messages into the prompt. That gives some conversational continuity without making the prompt too large or expensive.
+**What is HNSW?**
+> A layered graph for approximate nearest-neighbour search. It reaches close matches quickly by moving through the graph, trading a small loss of recall for far less work than checking every vector. Chroma uses it.
 
-Be honest:
+**Why do documents and queries get different prefixes in my code?**
+> Questions and passages are written differently, so task hints can help. I haven't measured the effect on this project, so I'd test it instead of assuming.
 
-- this is short-term chat memory, not long-term semantic memory
-- it is useful for follow-up questions
-- it is not a separate memory retrieval system
+## Part 6: Chunking
 
-## 11. How to explain multi-document querying
+**Why 1050 characters?**
+> It's large enough for a complete idea and small enough to keep a focused embedding. Six chunks also fit comfortably in the prompt. I chose it by judgement, not experiment, so I'd validate it with an evaluation set.
 
-Strong answer:
+**Too small or too large?**
+> Too small loses context, so the embedding is precise but the passage is incomplete. Too large mixes topics, which blurs the embedding and uses more prompt space.
 
-> The app supports both focused and broad retrieval. If the user selects specific PDFs, retrieval is filtered to those document IDs. If nothing is selected, the system searches across all uploaded PDFs for that user.
+**Why sentence-based?**
+> Fixed-size splitting can cut a sentence in half, which harms both the embedding and the passage shown to the model.
 
-Why this is a good feature:
+**What does overlap do?**
+> It keeps context across chunk boundaries. It also adds some duplication, which I handle by removing identical chunk ids. Near-duplicate text is what MMR helps with.
 
-- supports comparison questions across documents
-- gives users control over retrieval scope
-- keeps results user-specific and secure
+**Why chunk per page?**
+> Each chunk maps to exactly one page, so citations are exact. The weakness is that text crossing a page break is separated.
 
-## 12. Security and backend design points you can mention
+**Other strategies you know?**
+> - **Semantic chunking:** split where meaning changes.
+> - **Structure-based:** split by headings and sections.
+> - **Parent-child:** search small chunks but return the larger parent.
+> - **Late chunking:** embed the document first, then pool by chunk.
+>
+> For long reports I'd try parent-child or structure-based chunking first.
 
-- JWT authentication protects the API
-- selected document IDs are validated against the logged-in user
-- PDFs and vector stores are separated per user
-- filenames are sanitized with `secure_filename`
-- upload type is restricted to PDF
-- upload size is limited to 20 MB
-- answers and sources are persisted for chat history
+**What's the danger in your cleaning filters?**
+> They remove noise, but paragraphs under 10 words are dropped and chunks under 18 words are rejected. Short tables, lists and headings can vanish, so a fact in a table may never be indexed. I'd add table-aware extraction.
 
-Strong answer:
+**Single sentence longer than 1050 characters?**
+> It becomes one oversized chunk, because the code never splits within a sentence. This is uncommon, and it's easy to add a hard limit.
 
-> I made the RAG flow user-specific. Each user has isolated uploaded files, isolated vector storage, and document ownership checks before retrieval.
+## Part 7: Retrieval
 
-## 13. Honest limitations of the current project
+**Explain MMR.**
+> Maximal Marginal Relevance picks results one at a time, scoring each candidate as `lambda * similarity(candidate, query) - (1 - lambda) * max similarity(candidate, already selected)`. At `lambda=0.65` it favours relevance while still penalising repetition. It takes 18 candidates and selects 6.
 
-You should say these confidently. Interviewers usually like honest engineering judgment.
+**When does MMR hurt?**
+> When redundancy is useful, such as when several passages all confirm one precise fact. Then it may swap a relevant chunk for a less relevant but different one.
 
-- It depends on text-based PDFs. Scanned PDFs without OCR will not work well.
-- There is no reranker model after retrieval.
-- There is no hybrid retrieval using both keyword and vector search.
-- There is no streaming response in the UI.
-- Embeddings are generated per text item and could be optimized with batching.
-- There is no document deletion flow in the current UI/backend.
-- Memory is limited to the recent chat window, not a semantic memory layer.
-- The prompt is strong but still hand-written, not evaluated with formal benchmarks.
+**What is the similarity search doing?**
+> In practice it's a fallback. MMR results come first and the list is cut to 6, so similarity results rarely reach the prompt unless MMR fails or returns fewer. Both searches reuse one query embedding, so it's cheap, but I'd either remove it or merge the two lists properly with reciprocal rank fusion. This is a good thing to point out yourself.
 
-Strong answer:
+**What is hybrid search?**
+> Combining vector search with keyword search such as BM25. Vectors capture meaning and BM25 catches exact terms like invoice numbers. Results are usually merged with reciprocal rank fusion, which uses rank positions so that the two score scales don't need to match. This project doesn't have it.
 
-> The current version is strong as a learning-oriented production-style prototype, but I would still improve OCR support, retrieval quality, document lifecycle management, and observability before calling it fully production-ready.
+**What is reranking?**
+> A second, more accurate pass. For example, retrieve 50, rerank with a cross-encoder, and keep 6. This often gives a large quality gain for little code, though it adds latency.
 
-## 14. Improvements you can propose if they ask "what next?"
+**Query rewriting, HyDE and multi-query?**
+> - **Rewriting:** turn a follow-up into a standalone question.
+> - **HyDE:** generate a hypothetical answer and embed that, since it looks more like a document than a question does.
+> - **Multi-query:** create several versions of the question and combine the results.
+>
+> All add latency and cost per question. I'd add rewriting first because my retrieval ignores chat history.
 
-- add OCR for scanned PDFs
-- add reranking after vector retrieval
-- add hybrid search with BM25 plus vector search
-- support streaming answers
-- batch embeddings to improve indexing performance
-- add document delete and re-upload management
-- add citation highlighting tied to exact PDF pages
-- add background jobs for indexing large PDFs
-- add prompt evaluation and retrieval quality metrics
-- move from SQLite to managed MySQL or Postgres in production
+**How do metadata filters work here?**
+> Selected documents become `{"document_id": {"$in": [...]}}`, stored as strings. The route first checks that those ids belong to the user. Filtering narrows the search and improves precision when the user knows which file matters.
 
-## 15. Interview questions they may ask about this exact project
+## Part 8: Deep scenario questions
 
-### 1. What problem does your project solve?
+**1. 100 documents: what happens to relevance?**
+> Search stays fast, but relevance is the risk. Similar wording across documents competes for six places, and MMR sees only 18 candidates. Good passages can be missed, or one document can dominate. I'd raise candidates to about 50, add BM25 and a reranker, and cap chunks per document.
 
-Answer:
+**2. 100 documents: what's the total cost of ingestion?**
+> At 50 pages each and about 2.5 chunks per page, that's about 12,500 chunks. At my measured 0.64 s per call, serial embedding takes about 2.2 hours (estimate). I'd use batch embedding calls, a job queue and progress reporting.
 
-> It helps users ask natural-language questions over their PDF documents instead of manually reading everything. The system retrieves relevant sections from uploaded PDFs and generates grounded answers with source excerpts.
+**3. 100 documents: what slows down each question?**
+> With no selection, `ensure_documents_indexed` makes one `store.get` per document for each question. I'd store index status in SQL and only check when it changes.
 
-### 2. Why is this a RAG system and not just a chatbot?
+**4. A million documents?**
+> Local Chroma per user is no longer suitable. I'd move to a distributed vector database such as Qdrant or Milvus, with partitioning by tenant, async ingestion workers, object storage for files, caching, and tuned approximate search. I'd also use document-level routing to narrow the search first.
 
-Answer:
+**5. "Summarise all my documents."**
+> Six chunks can't do this, and the current system would give a partial answer that could look complete. This is a global question, and similarity search handles local ones. I'd detect the intent and use stored document summaries with map-reduce, or hierarchical retrieval such as RAPTOR.
 
-> Because the answer is grounded in retrieved document chunks. The model does not rely only on pretrained knowledge. It first retrieves relevant context from the user's PDFs and then answers from that context.
+**6. "Compare document A and document B."**
+> Nothing guarantees chunks from both. All six could come from A. I'd retrieve separately per document and allot places to each.
 
-### 3. Why did you choose low temperature?
+**7. The answer is in a table.**
+> Text extraction may flatten rows, and my filters may drop them. I'd use table-aware extraction, store tables as Markdown, and add a description for embedding.
 
-Answer:
+**8. Two documents disagree.**
+> The prompt has no rule for this, so the model may choose one silently. I'd pass dates and titles as metadata, and instruct the model to show both claims with sources.
 
-> Because this is a document QA use case. I want consistent and factual answers, so I used `0.1` instead of a creative setting.
+**9. The user asks something off-topic.**
+> Retrieval still returns six chunks, because scores are discarded. The prompt is my only protection. I'd add a score threshold, calibrated on test data, and return "not found" without calling the model. That saves money and removes a risk of invention.
 
-### 4. Why did you choose chunking?
+**10. A follow-up: "What about its budget?"**
+> The model sees history, but search uses only those raw words, so it may find the wrong passage. I'd rewrite the question using the history before retrieval.
 
-Answer:
+**11. History pollutes a new topic.**
+> Memory is always the last five exchanges, even if the user has changed documents or topics. A previous answer could influence a new one. Separate conversations and memory filtering would fix it.
 
-> Full PDFs are too large and noisy to send directly to the model. Chunking improves retrieval precision, reduces prompt size, and lets the vector database search at a more meaningful granularity.
+**12. A new document was just uploaded.**
+> It's available as soon as the upload completes, because indexing is synchronous. This is the benefit of RAG over training. The cost is that the user waits.
 
-### 5. Why did you use sentence overlap?
+**13. A document gets replaced.**
+> There's no replace or delete feature. A new upload creates a separate document, so old and new can both be retrieved. I'd add versioning and deletion across SQL, disk and vectors.
 
-Answer:
+**14. Embedding fails halfway through upload.**
+> The SQL row is already saved, and the request returns an error. Because chunk ids are stable and re-indexing deletes old vectors first, the next question repairs it. But the user sees an error for a document that's still listed. A status column would be better.
 
-> A small overlap preserves context between chunks so we do not lose meaning at chunk boundaries.
+**15. Chroma data is lost.**
+> PDFs remain on disk, so the next question re-embeds them automatically. Vectors are rebuildable, which costs only time and API calls. If uploads are lost too, that data has to be uploaded again.
 
-### 6. Why use MMR instead of only similarity search?
+**16. Gemini is down.**
+> Retrieval fails, so every question fails, even with Nebius and OpenAI working. Fallback protects only generation. Protecting retrieval would need a second embedding index, since vectors from different models can't be mixed.
 
-Answer:
+**17. Retrieved context is right but the answer is wrong.**
+> Debug in stages. First check extraction and whether the fact was indexed. Then check whether it was retrieved. Then look at the prompt and generation. Logging each stage with evaluation scores makes this quick. I don't have that logging yet, so I'd add it.
 
-> MMR helps avoid redundant chunks and gives better coverage across the document, especially when many chunks look similar.
+**18. Answers got worse after a change.**
+> Without an evaluation set I can't prove why, which is the reason to build one first. Then I'd compare retrieval and answer metrics before and after, changing one variable at a time.
 
-### 7. Why did you not use a LangChain RetrievalQA chain?
+**19. Latency is too high. Where does it go?**
+> The step card already shows real timings for embedding, retrieval and time to first token. In one test run those were about 690 ms, 55 ms and 1.1 s, so the LLM and embedding call dominated on a one-chunk document. The document check before them isn't timed yet, and it grows with document count. Streaming improves perceived speed, since waiting for the first word is what users notice most.
 
-Answer:
+**20. Costs are too high.**
+> Use semantic or exact-match caching, send fewer chunks after reranking, and route simple questions to cheaper models. Check token usage per stage before changing anything.
 
-> I wanted the RAG flow to be explicit and interview-friendly. Writing custom retrieval and prompting logic made it easier to control, debug, and explain each step.
+**21. Multiple users at the same time.**
+> One sync gunicorn worker handles one request at a time, and a streaming answer holds it until the last token, so a long chat or upload blocks others. I'd use threaded or async workers, move ingestion to a queue, and consider an async framework.
 
-### 8. How is chat memory handled?
+**24. The user presses Stop. What happens to the provider call?**
+> The browser aborts the fetch. The server notices when its next write fails, which closes the generator, so nothing is saved and the answer doesn't enter memory. Detection can lag slightly, so a few extra tokens may be generated and billed.
 
-Answer:
+**25. Is every streamed piece one token?**
+> No. Providers decide their chunk size. I measured about 5 characters per chunk for `gpt-4.1`, 8 for Nemotron, 10 for Qwen, and about 125 for Gemini. I release Gemini's blocks word by word with a 12 ms gap, so that pacing is added by me, while the text is real. The word pacing adds a small delay, and I'd state that openly.
 
-> I save the conversation in the database and only pass the most recent five turns into the prompt to keep follow-up questions coherent without growing token usage too much.
+**22. Non-English documents or questions.**
+> Multilingual embeddings can match across languages, but several parts assume English. `is_meaningful_text` counts only A to Z letters, so Hindi or Marathi text would be rejected as low quality. The sentence splitter also misses the Devanagari full stop. That's a real bug for these languages.
 
-### 9. How do you prevent hallucination?
+**23. Very large embedding dimensions: is 3072 good?**
+> Larger vectors can hold more detail but use more memory and take longer to compare. At 4 bytes per value, each vector takes about 12 KB of raw storage. Some models can shorten their output. I'd test whether a smaller size keeps recall.
 
-Answer:
+## Part 9: Measuring quality
 
-> I use retrieval grounding, a low temperature, a prompt that explicitly says answer only from context, and source excerpts in the response. If the context is incomplete, the prompt tells the model to say what is uncertain instead of inventing details.
+| Metric | Question it answers |
+|---|---|
+| Recall@k | Did the right passage appear in the top k? |
+| Precision@k | How many retrieved passages were useful? |
+| MRR | How high was the first correct passage? |
+| nDCG | How good was the whole ranking? |
+| Faithfulness | Is the answer supported by the context? |
+| Answer relevance | Does the answer address the question? |
+| Context precision and recall | Was the context focused and complete? |
 
-### 10. What happens if no relevant chunk is found?
+**How would you evaluate this project?**
+> Build 50 to 100 questions with known correct passages, including tricky and unanswerable ones. Measure retrieval and generation separately, using a tool like RAGAS or my own scripts, and run it on every change to chunking, retrieval or prompts. The current project has no automated evaluation. That's the first thing I'd add, because every tuning decision depends on it.
 
-Answer:
+**Which metric comes first?**
+> Retrieval recall, because the model can't use a passage it never receives.
 
-> The backend returns a fallback message telling the user that matching content could not be found in the uploaded PDFs yet.
+## Part 10: Prompting and hallucination
 
-### 11. How is data isolated per user?
+**What prompting style is it?**
+> Zero-shot instruction prompting with retrieved context. There are no examples. The rules say to answer only from the context, ignore fragments, say what's uncertain and not invent details.
 
-Answer:
+**How do you reduce hallucination?**
+> Retrieval grounding, a strict prompt, low temperature and visible sources. These reduce it but don't remove it, and I don't verify each claim against the context. Next steps would be a relevance threshold, inline citations and a faithfulness check.
 
-> Uploaded PDFs are stored in a user-specific directory, Chroma data is stored per user, and document IDs are validated against the current JWT identity before retrieval.
+**Are your citations proof the model used that source?**
+> No. Sources are what was retrieved, not necessarily what was used. The prompt labels chunks as `[Source n]` but doesn't require inline references. I'd require them and validate that each one exists.
 
-### 12. What database tables are used?
+**What is prompt injection here?**
+> A PDF could contain text like "ignore your instructions". Since retrieved text goes into the prompt, the model might obey it. The damage is limited because only that user's documents are used and the model has no tools. I'd add delimiters around context, and output checks. No method fully prevents it.
 
-Answer:
+## Part 11: What I would improve, in order
 
-> The main tables are `users`, `documents`, and `chat_messages`. Users hold auth data, documents store uploaded file metadata and chunk counts, and chat messages store question-answer history plus sources.
+1. **Evaluation set:** every other change depends on measurement.
+2. **Background ingestion with batched embeddings:** removes slow uploads and timeouts.
+3. **Reranking and hybrid search:** usually the largest relevance gain.
+4. **Relevance threshold:** reliable "not found" answers.
+5. **Question rewriting:** fixes follow-up retrieval.
+6. **Document delete and conversations:** basic product features.
+7. **Shared file and vector storage:** one location that survives deployments and database changes.
+8. **OCR and table extraction:** more document types.
+9. **Observability:** latency, tokens and retrieval logs saved per stage.
 
-### 13. What is the role of the vector database here?
+## Part 12: Security
 
-Answer:
+| Topic | Current state | Improvement |
+|---|---|---|
+| Passwords | Salted hashes through Werkzeug | Add strength rules; none are enforced today |
+| Access control | User id from the token; document ids checked for ownership | Keep it |
+| Vector isolation | Separate store per user | Keep it. Shared stores would need enforced tenant filters |
+| Uploads | Name check, 20 MB limit, UUID storage name, `secure_filename` | Check file contents, not only the name, and add malware scanning |
+| Tokens | Access and refresh tokens in `localStorage`, so readable by any XSS. No refresh rotation or revocation | HttpOnly cookies, rotation and a revocation table |
+| XSS | React escapes text, and Markdown doesn't run raw HTML | Keep it, add a content security policy |
+| Secrets | `.env` is ignored by git | Use a secret manager in production and rotate exposed keys |
+| JWT secret | Falls back to a known default if unset | Refuse to start without one |
+| Rate limits | None, so one user can run up API costs, and the public demo account makes this easier | Add per-user limits, especially on demo |
+| Demo account | Public password and a shared workspace, on purpose, so reviewers can test quickly. It has normal user rights only, and can't reach other users' data | Give each visitor a temporary workspace with sample documents, and reset it regularly |
+| Error messages | Raw exception text returned on chat failure | Log details, return a generic message |
+| CORS | Controlled by environment; defaults to `*` if unset | Always set it in production |
+| Debug mode | `python app.py` runs with `debug=True` | Never use it in production; `Procfile` uses gunicorn |
 
-> Chroma stores embeddings for each PDF chunk and lets the app retrieve the chunks most semantically similar to the user's question.
+## Part 13: Backend and frontend questions
 
-### 14. Why use Gemini embeddings and Gemini generation together?
+**Why an application factory?**
+> It avoids global setup and circular imports, and it allows building the app with different settings for tests.
 
-Answer:
+**Why separate routes and services?**
+> Routes handle HTTP and services hold logic, so retrieval can be tested or changed without HTTP code.
 
-> Using the same provider simplifies integration and keeps the embedding and generation stack consistent for a student-friendly project.
+**Why cache clients with `lru_cache`?**
+> Building a client repeatedly wastes time. Caching reuses one per key and base URL. It also means environment changes need a restart.
 
-### 15. What would you improve first?
+**Why `pool_pre_ping` and `pool_recycle`?**
+> Cloud databases close idle connections. Pre-ping tests a connection before use, and recycling replaces old ones.
 
-Answer:
+**Why store sources as JSON text?**
+> They're only ever read back with their message, so normalised tables aren't needed. Note that `mysql_schema.sql` uses JSON columns while the SQLAlchemy model uses Text, which is a small inconsistency to tidy up.
 
-> I would add OCR and reranking first, because those would likely produce the biggest quality improvement for real-world documents.
+**Why does the UI show the question before the answer arrives?**
+> It uses a `streaming` state so the screen responds immediately. If the request fails, the question goes back into the input so nothing is lost.
 
-## 16. If the interviewer asks "explain the project from frontend to backend"
+**Are the progress steps real?**
+> Yes. Each step event is sent as that stage starts and finishes in the backend, with measured durations. To make embedding its own stage, I embed the question first and then search by vector.
 
-Use this answer:
+**Why SSE and not WebSockets?**
+> Chat streaming is one-way after the question is sent, and SSE works over plain HTTP with simple framing. WebSockets add connection management that I don't need.
 
-> The frontend is built with React and communicates with the Flask backend using Axios. A logged-in user can upload PDFs, see the indexed document list, select specific PDFs, and ask questions. The backend stores the PDF, extracts and cleans text, splits it into chunks, embeds those chunks using Gemini embeddings, and stores them in Chroma. On each question, the backend retrieves relevant chunks, builds a zero-shot prompt with recent memory and document context, sends it to Gemini `gemini-2.5-flash`, stores the answer in the database, and returns both the answer and source excerpts to the frontend.
+**Why `fetch` and not `EventSource`?**
+> `EventSource` supports only GET and can't set an `Authorization` header. `fetch` lets me POST the question with the JWT and read the response body as a stream.
 
-## 17. If the interviewer asks "what makes this more than a demo?"
+**Why does the backend save only at the end?**
+> A partial answer would pollute history and future prompt memory. Saving after the last token means stopped or failed answers leave nothing behind.
 
-Use this answer:
+**Why `stream_with_context`?**
+> Flask's request context normally ends once the route returns, but the generator runs after that and needs the database session.
 
-> It has real full-stack structure: authentication, user-specific storage, persistent chat history, vector indexing, multi-document retrieval, source attribution, and configurable environment-based deployment. So it is small, but it already includes the main building blocks of a practical RAG application.
+**How does the picker avoid showing broken models?**
+> The server lists only providers with keys, and validates the id on each request. A key can still be invalid, in which case the call fails with an error.
 
-## 18. Best closing summary
+**Why is the frontend state in one hook and not Redux?**
+> One screen with modest shared state doesn't justify it. As features grow, I'd split the hook or use a small store such as Zustand.
 
-If they ask for a summary, say:
+## Part 14: Questions that catch people out
 
-> This project helped me understand the full RAG lifecycle end to end: ingestion, chunking, embeddings, vector storage, retrieval, prompt construction, grounded generation, and frontend delivery. It is not just calling an LLM API; it is a complete document-question-answering system with user isolation and retrieval-based reasoning.
+**"You use LangChain, so is this a LangChain app?"**
+> Only lightly. It's used for the Chroma integration and the embeddings interface. Retrieval, prompts and fallback are my own code.
 
-## 19. Important repo-grounded facts to remember
+**"Your interview notes say hybrid retrieval. Is it hybrid?"**
+> No. MMR and similarity are both vector searches. Hybrid means vector plus keyword.
 
-- model used for answers: `gemini-2.5-flash`
-- temperature used: `0.1`
-- max output tokens: `1536`
-- thinking budget: `256`
-- embedding model: `gemini-embedding-2`
-- chunk size: `1050` characters
-- chunk overlap: `1` sentence
-- MMR retrieval: `k=6`, `fetch_k=18`, `lambda_mult=0.65`
-- similarity fallback: `k=8`
-- recent memory in prompt: `5` messages
-- chat history shown: `20` messages
-- vector DB: Chroma
-- prompting style: zero-shot with retrieved context
+**"Do you rerank?"**
+> No. MMR reorders for variety using the same embeddings. A reranker is a separate, more accurate model.
 
-## 20. Parameters not explicitly configured in this repo
+**"Does it remember everything?"**
+> No. The prompt gets the last five exchanges, and there is no semantic memory.
 
-If they ask about other common LLM settings, say this honestly:
+**"Does the model learn from uploads?"**
+> No. Nothing is trained. Text is retrieved and sent as context for each question.
 
-> In this project I explicitly configured model, temperature, max output tokens, and thinking budget. I did not explicitly configure settings like `top_p`, frequency penalty, presence penalty, or a reranker model in this version.
+**"Is your data private?"**
+> Users are isolated from each other in this app, but chunks and questions are sent to external model and embedding providers. Each provider's data policy matters for sensitive documents.
 
-That is a good answer because it is accurate and shows you know the difference between what was implemented and what could be added later.
+**"What was your hardest bug?"**
+> Answer from your own experience. Real ones from this project: CORS configuration during deployment, and a broken `chromadb` import caused by mismatched `opentelemetry` packages in a shared Python install, which a project virtual environment solved. Another good one: storage folders are keyed by database user id, so switching databases can make a different person share an old user's vectors.
 
-## 21. Where these answers came from in the codebase
+## Part 15: Closing summary
 
-- `backend/ragdocs_api/services/gemini_service.py`
-- `backend/ragdocs_api/services/vector_store_service.py`
-- `backend/ragdocs_api/services/pdf_service.py`
-- `backend/ragdocs_api/services/chat_service.py`
-- `backend/ragdocs_api/services/document_service.py`
-- `backend/ragdocs_api/config.py`
-- `backend/ragdocs_api/routes/chat.py`
-- `backend/ragdocs_api/routes/documents.py`
-- `frontend/src/hooks/useRagDocsApp.js`
-- `README.md`
-
-## 22. Best one-line answer if they ask "what did you personally build?"
-
-> I built the end-to-end flow for a PDF RAG assistant: upload, chunking, embeddings, Chroma retrieval, Gemini answer generation, JWT-based user access, and a React UI that shows grounded answers with source excerpts.
+> This project taught me the full RAG lifecycle: ingestion, chunking, embeddings, vector search, prompting, generation and citation. I also learned that most quality problems come from the data and retrieval stages, not the LLM call. It's a strong working system, and I know what it needs next: evaluation, better retrieval, and asynchronous ingestion.

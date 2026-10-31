@@ -25,7 +25,6 @@ def get_gemini_config():
         "model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip(),
         "temperature": get_env_float("GEMINI_TEMPERATURE", 0.1),
         "max_output_tokens": get_env_int("GEMINI_MAX_OUTPUT_TOKENS", 1536),
-        "thinking_budget": get_env_int("GEMINI_THINKING_BUDGET", 256),
     }
 
 
@@ -48,8 +47,6 @@ def get_gemini_generation_config():
     return types.GenerateContentConfig(
         temperature=config["temperature"],
         max_output_tokens=config["max_output_tokens"],
-        thinking_config=types.ThinkingConfig(
-            thinking_budget=config["thinking_budget"]
-        ),
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
         response_mime_type="text/plain",
     )

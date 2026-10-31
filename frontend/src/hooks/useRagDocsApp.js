@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
-import api, { setAuthToken } from "../api";
+import { useEffect, useRef, useState } from "react";
+import api, { setAuthToken, streamChat } from "../api";
 import {
+  DEMO_ACCOUNT,
   emptyForm,
   emptyNotice,
   MODEL_KEY,
+  REFRESH_KEY,
   TOKEN_KEY,
   USER_KEY,
 } from "../constants/app";
@@ -20,7 +22,8 @@ export function useRagDocsApp() {
   const [selectedDocs, setSelectedDocs] = useState([]);
   const [history, setHistory] = useState([]);
   const [question, setQuestion] = useState("");
-  const [pendingQuestion, setPendingQuestion] = useState("");
+  const [streaming, setStreaming] = useState(null);
+  const abortRef = useRef(null);
   const [config, setConfig] = useState(null);
   const [model, setModelState] = useState(
     localStorage.getItem(MODEL_KEY) || "auto"
@@ -90,15 +93,17 @@ export function useRagDocsApp() {
     }
   }
 
-  function saveSession(nextToken, nextUser) {
+  function saveSession(nextToken, nextRefreshToken, nextUser) {
     setToken(nextToken);
     setUser(nextUser);
     localStorage.setItem(TOKEN_KEY, nextToken);
+    localStorage.setItem(REFRESH_KEY, nextRefreshToken);
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
     setError("");
   }
 
   function clearSession() {
+    abortRef.current?.abort();
     setToken("");
     setUser(null);
     setDocuments([]);
@@ -107,11 +112,22 @@ export function useRagDocsApp() {
     setConfig(null);
     setError("");
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
     localStorage.removeItem(USER_KEY);
     setAuthToken("");
   }
 
   function handleError(err, fallbackMessage) {
+    // 401 means expired and 422 means invalid, except on the login routes themselves,
+    // where 401 means a wrong password. Parallel requests can all land here.
+    const status = err?.response?.status;
+    const isAuthRoute = err?.config?.url?.startsWith("/auth/");
+    if ((status === 401 || status === 422) && !isAuthRoute) {
+      clearSession();
+      setError("Your session expired. Please log in again.");
+      return;
+    }
+
     const message = err?.response?.data?.error || fallbackMessage;
     setError(message);
   }
@@ -142,11 +158,34 @@ export function useRagDocsApp() {
           response.data.message || "Account created successfully. Please log in."
         );
       } else {
-        saveSession(response.data.token, response.data.user);
+        saveSession(
+          response.data.token,
+          response.data.refresh_token,
+          response.data.user
+        );
         setForm(emptyForm);
       }
     } catch (err) {
       handleError(err, `Could not ${authMode}.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDemoLogin() {
+    setBusy(true);
+    setError("");
+    setAuthMode("login");
+    try {
+      const response = await api.post("/auth/login", DEMO_ACCOUNT);
+      saveSession(
+        response.data.token,
+        response.data.refresh_token,
+        response.data.user
+      );
+      setForm(emptyForm);
+    } catch (err) {
+      handleError(err, "Could not log in to the demo account.");
     } finally {
       setBusy(false);
     }
@@ -212,33 +251,72 @@ export function useRagDocsApp() {
     setBusy(true);
     setError("");
     setQuestion("");
-    setPendingQuestion(asked);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const live = {
+      question: asked,
+      answer: "",
+      sources: [],
+      model: null,
+      steps: [],
+      created_at: new Date().toISOString(),
+    };
+    setStreaming({ ...live });
+
+    const applyEvent = (event) => {
+      if (event.type === "error") {
+        throw new Error(event.error);
+      }
+      if (event.type === "step") {
+        const known = live.steps.some((step) => step.id === event.id);
+        live.steps = known
+          ? live.steps.map((step) => (step.id === event.id ? event : step))
+          : [...live.steps, event];
+      } else if (event.type === "token") {
+        live.answer += event.text;
+      } else if (event.type === "sources") {
+        live.sources = event.sources;
+      } else if (event.type === "model") {
+        live.model = event.model;
+      } else if (event.type === "done") {
+        live.id = event.message_id;
+        live.total_ms = event.total_ms;
+      }
+      setStreaming({ ...live });
+    };
 
     try {
-      const response = await api.post("/chat", {
-        question: asked,
-        document_ids: selectedDocs,
-        model,
-      });
-
-      setHistory((current) => [
-        ...current,
-        {
-          id: response.data.message_id,
-          question: asked,
-          answer: response.data.answer,
-          sources: response.data.sources,
-          model: response.data.model,
-          created_at: new Date().toISOString(),
-        },
-      ]);
+      await streamChat(
+        { question: asked, document_ids: selectedDocs, model },
+        { signal: controller.signal, onEvent: applyEvent }
+      );
+      if (!live.id) {
+        throw new Error("The connection closed before the answer finished.");
+      }
+      setHistory((current) => [...current, live]);
     } catch (err) {
-      setQuestion(asked);
-      handleError(err, "Could not get an answer right now.");
+      if (err.name === "AbortError" && live.answer) {
+        // A stopped answer stays on screen, but the backend doesn't save it.
+        setHistory((current) => [
+          ...current,
+          { ...live, id: `stopped-${Date.now()}`, stopped: true },
+        ]);
+      } else if (err.name !== "AbortError") {
+        setQuestion(asked);
+        handleError(err, err.message || "Could not get an answer right now.");
+      } else {
+        setQuestion(asked);
+      }
     } finally {
+      abortRef.current = null;
       setBusy(false);
-      setPendingQuestion("");
+      setStreaming(null);
     }
+  }
+
+  function stopGenerating() {
+    abortRef.current?.abort();
   }
 
   return {
@@ -252,9 +330,9 @@ export function useRagDocsApp() {
     history,
     model,
     notice,
-    pendingQuestion,
     question,
     selectedDocs,
+    streaming,
     token,
     uploading,
     user,
@@ -262,12 +340,14 @@ export function useRagDocsApp() {
     clearSession,
     handleAuthSubmit,
     handleClearHistory,
+    handleDemoLogin,
     handleUpload,
     setAuthMode,
     setError,
     setForm,
     setModel,
     setQuestion,
+    stopGenerating,
     toggleDocument,
   };
 }

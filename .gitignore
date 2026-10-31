@@ -14,5 +14,6 @@ venv/
 backend/ragdocs.db
 backend/storage/chroma/
 backend/storage/uploads/
+backend/storage/sqlite_archive/
 node_modules/
 frontend/dist/

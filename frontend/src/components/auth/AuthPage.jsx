@@ -1,6 +1,7 @@
-import { Eye, EyeOff, Loader2, Moon, Sun } from "lucide-react";
+import { Eye, EyeOff, KeyRound, Loader2, Moon, Sun } from "lucide-react";
 import { useState } from "react";
 
+import { DEMO_ACCOUNT } from "../../constants/app";
 import { useTheme } from "../../hooks/useTheme";
 import { cn } from "../../utils/cn";
 import NoticeBanner from "../shared/NoticeBanner";
@@ -28,6 +29,7 @@ function AuthPage({
   form,
   notice,
   onAuthModeChange,
+  onDemoLogin,
   onFormChange,
   onSubmit,
 }) {
@@ -138,6 +140,24 @@ function AuthPage({
             {isLogin ? "Log in" : "Create account"}
           </Button>
         </form>
+
+        <div className="mt-6 rounded-xl border border-dashed border-zinc-300 p-4 dark:border-zinc-700">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <KeyRound className="h-4 w-4 text-brand-500" /> Demo account
+          </div>
+          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+            <dt className="text-zinc-500">Email</dt>
+            <dd className="break-all font-mono">{DEMO_ACCOUNT.email}</dd>
+            <dt className="text-zinc-500">Password</dt>
+            <dd className="break-all font-mono">{DEMO_ACCOUNT.password}</dd>
+          </dl>
+          <Button size="sm" className="mt-3 w-full" onClick={onDemoLogin} disabled={busy}>
+            Log in with demo account
+          </Button>
+          <p className="mt-2 text-xs leading-5 text-zinc-500">
+            Shared account. Other visitors can see what you upload, so don't use private files.
+          </p>
+        </div>
       </div>
     </main>
   );

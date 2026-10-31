@@ -143,7 +143,7 @@ function Sidebar({ app, open, onClose, onOpenUpload }) {
                       {doc.name}
                     </span>
                     <span className="block text-xs text-zinc-500">
-                      {doc.chunk_count} chunks
+                      {doc.chunk_count} {doc.chunk_count === 1 ? "chunk" : "chunks"}
                     </span>
                   </span>
                 </label>
@@ -154,7 +154,7 @@ function Sidebar({ app, open, onClose, onOpenUpload }) {
           {history.length > 0 && (
             <section>
               <SectionLabel count={history.length}>Saved chats</SectionLabel>
-              {[...history].reverse().map((item) => (
+              {history.filter((item) => !item.stopped).reverse().map((item) => (
                 <button
                   key={item.id || item.created_at}
                   type="button"

@@ -1,7 +1,7 @@
-import { ArrowUp, FileText, Loader2 } from "lucide-react";
+import { ArrowUp, FileText, Square } from "lucide-react";
 import { useEffect, useRef } from "react";
 
-function Composer({ busy, hasDocuments, value, onChange, onSend }) {
+function Composer({ busy, hasDocuments, value, onChange, onSend, onStop }) {
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -58,19 +58,26 @@ function Composer({ busy, hasDocuments, value, onChange, onSend }) {
           <span className="flex items-center gap-1 text-[11px] text-zinc-400">
             <FileText className="h-3 w-3" /> Answers from your documents
           </span>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!canSend}
-            className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
-            aria-label="Send message"
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
+          {busy ? (
+            <button
+              type="button"
+              onClick={onStop}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              aria-label="Stop generating"
+            >
+              <Square className="h-3 w-3 fill-current" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={submit}
+              disabled={!canSend}
+              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
+              aria-label="Send message"
+            >
               <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
-            )}
-          </button>
+            </button>
+          )}
         </div>
       </div>
       <p className="mt-2 text-center text-[11px] text-zinc-400">

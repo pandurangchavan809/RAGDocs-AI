@@ -36,10 +36,14 @@ export default {
           from: { backgroundPosition: "-200% 0" },
           to: { backgroundPosition: "200% 0" },
         },
+        blink: {
+          to: { visibility: "hidden" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.25s ease-out both",
         shimmer: "shimmer 1.6s linear infinite",
+        blink: "blink 1s steps(2, start) infinite",
       },
     },
   },
