@@ -5,6 +5,7 @@ RAGDocs AI is a full-stack PDF assistant. Users upload PDFs and ask questions in
 **Further reading:**
 - [workflow.md](workflow.md): how the system works, and what every folder, file and function does
 - [interview.md](interview.md): interview preparation, from project pitch to deep RAG questions
+- [followup.md](followup.md): follow-up questions and advanced RAG concepts, including MMR
 
 ## Try it with the demo account
 
