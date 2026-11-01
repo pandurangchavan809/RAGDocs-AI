@@ -5,7 +5,6 @@ import Button from "../ui/Button";
 import Composer from "./Composer";
 import EmptyState from "./EmptyState";
 import { AssistantMessage, UserMessage } from "./Messages";
-import ModelPicker from "./ModelPicker";
 
 function getDocumentsLabel(total, selected) {
   if (selected) {
@@ -52,7 +51,6 @@ function ChatView({ app, onOpenSidebar, onOpenUpload }) {
         >
           <Menu className="h-4 w-4" />
         </Button>
-        <ModelPicker config={config} model={app.model} onChange={app.setModel} />
         {documents.length > 0 && (
           <span className="ml-auto hidden max-w-[240px] truncate rounded-full border border-zinc-200 px-2.5 py-1 text-xs text-zinc-500 sm:block dark:border-zinc-800">
             {getDocumentsLabel(documents.length, selectedDocs.length)}
@@ -127,9 +125,12 @@ function ChatView({ app, onOpenSidebar, onOpenUpload }) {
 
         <Composer
           busy={app.busy}
+          config={config}
           hasDocuments={documents.length > 0}
+          model={app.model}
           value={app.question}
           onChange={app.setQuestion}
+          onModelChange={app.setModel}
           onSend={send}
           onStop={app.stopGenerating}
         />

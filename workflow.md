@@ -289,7 +289,7 @@ Nebius and OpenAI share one function because Nebius offers an OpenAI-compatible 
 | `chat/StepTrace.jsx` | Live step card with real timings, collapsing to "Completed in X s" afterwards. |
 | `chat/Markdown.jsx` | Renders answers as Markdown. Raw HTML in an answer isn't executed. |
 | `chat/SourcesBlock.jsx` | Collapsible list of file, page and excerpt. |
-| `chat/Composer.jsx` | Auto-growing input and a send button that becomes Stop while answering. Disabled until a document exists. |
+| `chat/Composer.jsx` | Auto-growing input, the model picker, and a send button that becomes Stop while answering. Disabled until a document exists. |
 | `shared/NoticeBanner.jsx` | Short success messages. |
 | `ui/Button.jsx`, `ui/Dialog.jsx`, `ui/Logo.jsx` | Reusable building blocks. |
 

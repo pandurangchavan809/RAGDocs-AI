@@ -304,7 +304,13 @@ export function useRagDocsApp() {
         ]);
       } else if (err.name !== "AbortError") {
         setQuestion(asked);
-        handleError(err, err.message || "Could not get an answer right now.");
+        // fetch throws a TypeError ("Failed to fetch") when the server can't be reached.
+        handleError(
+          err,
+          err instanceof TypeError
+            ? "Could not reach the server. Please try again."
+            : err.message || "Could not get an answer right now."
+        );
       } else {
         setQuestion(asked);
       }

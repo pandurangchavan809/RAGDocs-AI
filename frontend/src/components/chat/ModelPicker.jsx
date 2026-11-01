@@ -42,7 +42,7 @@ function ModelPicker({ config, model, onChange }) {
   // With one usable model there is nothing to choose, so show it as a label.
   if (config.models.length === 1) {
     return (
-      <span className="flex h-9 items-center gap-1.5 px-3 text-sm font-medium">
+      <span className="flex h-8 items-center gap-1.5 px-2 text-[13px] font-medium">
         <Sparkles className="h-4 w-4 text-brand-500" />
         <span className="max-w-[180px] truncate">{config.models[0].label}</span>
       </span>
@@ -61,16 +61,17 @@ function ModelPicker({ config, model, onChange }) {
   };
 
   return (
-    <div ref={containerRef} className="relative">
+    // On phones the menu anchors to the composer card, so it can't run off screen.
+    <div ref={containerRef} className="sm:relative">
       <button
         type="button"
         onClick={() => setOpen((current) => !current)}
-        className="flex h-9 items-center gap-1.5 rounded-xl px-3 text-sm font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800/70"
+        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[13px] font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800/70"
         aria-haspopup="listbox"
         aria-expanded={open}
       >
         {selected ? (
-          <span className="max-w-[180px] truncate">{selected.label}</span>
+          <span className="max-w-[130px] truncate sm:max-w-[200px]">{selected.label}</span>
         ) : (
           <>
             <Sparkles className="h-4 w-4 text-brand-500" /> Auto
@@ -82,7 +83,7 @@ function ModelPicker({ config, model, onChange }) {
       {open && (
         <div
           role="listbox"
-          className="absolute left-0 top-11 z-40 max-h-[70vh] w-[min(340px,calc(100vw-2rem))] animate-fade-in overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
+          className="absolute bottom-full right-0 z-40 mb-2 max-h-[60vh] w-[min(340px,calc(100vw-2rem))] animate-fade-in overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-1.5 shadow-xl dark:border-zinc-800 dark:bg-zinc-900"
         >
           <Option
             active={!selected}

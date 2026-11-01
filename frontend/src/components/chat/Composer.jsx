@@ -1,7 +1,19 @@
 import { ArrowUp, FileText, Square } from "lucide-react";
 import { useEffect, useRef } from "react";
 
-function Composer({ busy, hasDocuments, value, onChange, onSend, onStop }) {
+import ModelPicker from "./ModelPicker";
+
+function Composer({
+  busy,
+  config,
+  hasDocuments,
+  model,
+  value,
+  onChange,
+  onModelChange,
+  onSend,
+  onStop,
+}) {
   const textareaRef = useRef(null);
 
   useEffect(() => {
@@ -29,7 +41,7 @@ function Composer({ busy, hasDocuments, value, onChange, onSend, onStop }) {
 
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-4 sm:px-6">
-      <div className="rounded-2xl border border-zinc-200 bg-white shadow-[0_2px_16px_-6px_rgb(0_0_0/0.12)] transition-colors focus-within:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:focus-within:border-zinc-600">
+      <div className="relative rounded-2xl border border-zinc-200 bg-white shadow-[0_2px_16px_-6px_rgb(0_0_0/0.12)] transition-colors focus-within:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-900 dark:focus-within:border-zinc-600">
         <textarea
           ref={textareaRef}
           rows={1}
@@ -55,14 +67,17 @@ function Composer({ busy, hasDocuments, value, onChange, onSend, onStop }) {
           aria-label="Message"
         />
         <div className="flex items-center gap-2 px-3 pb-2.5">
-          <span className="flex items-center gap-1 text-[11px] text-zinc-400">
+          <span className="hidden items-center gap-1 text-[11px] text-zinc-400 sm:flex">
             <FileText className="h-3 w-3" /> Answers from your documents
           </span>
+          <div className="ml-auto">
+            <ModelPicker config={config} model={model} onChange={onModelChange} />
+          </div>
           {busy ? (
             <button
               type="button"
               onClick={onStop}
-              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
               aria-label="Stop generating"
             >
               <Square className="h-3 w-3 fill-current" />
@@ -72,7 +87,7 @@ function Composer({ busy, hasDocuments, value, onChange, onSend, onStop }) {
               type="button"
               onClick={submit}
               disabled={!canSend}
-              className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600"
               aria-label="Send message"
             >
               <ArrowUp className="h-4 w-4" strokeWidth={2.5} />
