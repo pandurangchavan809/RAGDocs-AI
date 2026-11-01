@@ -348,7 +348,7 @@ RRF score = sum of 1 / (k + rank)      k is usually 60
 
 **Q58. How do you handle document updates and deletes?**
 
-> Use stable ids and versions. For updates, either replace chunks atomically or write the new version and switch over. For deletes, remove the SQL row, file and vectors together, using a background job with retries, since three stores can't share one transaction. My project has no delete feature yet.
+> Use stable ids and versions. For updates, either replace chunks atomically or write the new version and switch over. Deletes span three stores that can't share one transaction, so order matters. I delete vectors first, then the file, then the SQL row. If a step fails, the document stays listed and the user can retry, and it can never leave vectors that are searchable but invisible. At scale I'd use a background job with retries. One gap: chat history is kept, so recent answers can still reach the model as memory until the chat is cleared.
 
 **Q59. How would you reduce latency?**
 
@@ -558,6 +558,6 @@ Answer in this order:
 
 ## What your project does not have
 
-Don't claim any of these unless you build them: reranking, hybrid or BM25 search, a relevance threshold, query rewriting, automated evaluation, OCR, table extraction, inline citation checks, document deletion, separate conversations, or rate limiting.
+Don't claim any of these unless you build them: reranking, hybrid or BM25 search, a relevance threshold, query rewriting, automated evaluation, OCR, table extraction, inline citation checks, separate conversations, or rate limiting.
 
 You can still discuss all of them confidently as "what I'd add next, and why".

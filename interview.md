@@ -269,7 +269,7 @@ Before saying this, confirm it's your reasoning, and be ready with measured late
 > It's available as soon as the upload completes, because indexing is synchronous. This is the benefit of RAG over training. The cost is that the user waits.
 
 **13. A document gets replaced.**
-> There's no replace or delete feature. A new upload creates a separate document, so old and new can both be retrieved. I'd add versioning and deletion across SQL, disk and vectors.
+> There's no replace feature. A new upload creates a separate document, so old and new can both be retrieved until the user deletes the old one. Deletion removes vectors, then the file, then the SQL row. I'd add versioning so replacing is a single step.
 
 **14. Embedding fails halfway through upload.**
 > The SQL row is already saved, and the request returns an error. Because chunk ids are stable and re-indexing deletes old vectors first, the next question repairs it. But the user sees an error for a document that's still listed. A status column would be better.
@@ -346,7 +346,7 @@ Before saying this, confirm it's your reasoning, and be ready with measured late
 3. **Reranking and hybrid search:** usually the largest relevance gain.
 4. **Relevance threshold:** reliable "not found" answers.
 5. **Question rewriting:** fixes follow-up retrieval.
-6. **Document delete and conversations:** basic product features.
+6. **Separate conversations:** a basic product feature, and it stops old answers leaking into new topics.
 7. **Shared file and vector storage:** one location that survives deployments and database changes.
 8. **OCR and table extraction:** more document types.
 9. **Observability:** latency, tokens and retrieval logs saved per stage.

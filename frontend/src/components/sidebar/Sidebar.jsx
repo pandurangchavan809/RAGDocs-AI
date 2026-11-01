@@ -1,4 +1,4 @@
-import { Eraser, FileText, LogOut, Moon, Sun, Upload, X } from "lucide-react";
+import { Eraser, FileText, LogOut, Moon, Sun, Trash2, Upload, X } from "lucide-react";
 
 import { useTheme } from "../../hooks/useTheme";
 import { cn } from "../../utils/cn";
@@ -26,6 +26,7 @@ function SectionLabel({ children, count }) {
 function Sidebar({ app, open, onClose, onOpenUpload }) {
   const { dark, toggle } = useTheme();
   const { documents, history, selectedDocs, user } = app;
+  const deleteDisabled = app.busy || app.deletingDocs;
 
   const jumpToMessage = (id) => {
     document.getElementById(`message-${id}`)?.scrollIntoView({ block: "start" });
@@ -126,27 +127,52 @@ function Sidebar({ app, open, onClose, onOpenUpload }) {
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 pb-3">
           {documents.length > 0 && (
             <section>
-              <SectionLabel count={documents.length}>Documents</SectionLabel>
-              {documents.map((doc) => (
-                <label
-                  key={doc.id}
-                  className="flex cursor-pointer items-start gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800/70"
+              <div className="flex items-center justify-between px-1 pb-1.5">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-400">
+                  Documents
+                </p>
+                <button
+                  type="button"
+                  onClick={app.handleDeleteAllDocuments}
+                  disabled={deleteDisabled}
+                  className="text-xs text-zinc-500 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-red-400"
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedDocs.includes(doc.id)}
-                    onChange={() => app.toggleDocument(doc.id)}
-                    className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand-500"
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm" title={doc.name}>
-                      {doc.name}
+                  Delete all
+                </button>
+              </div>
+              {documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  className="flex items-start gap-1 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800/70"
+                >
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 px-1.5 py-1.5">
+                    <input
+                      type="checkbox"
+                      checked={selectedDocs.includes(doc.id)}
+                      onChange={() => app.toggleDocument(doc.id)}
+                      className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-brand-500"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm" title={doc.name}>
+                        {doc.name}
+                      </span>
+                      <span className="block text-xs text-zinc-500">
+                        {doc.chunk_count} {doc.chunk_count === 1 ? "chunk" : "chunks"}
+                      </span>
                     </span>
-                    <span className="block text-xs text-zinc-500">
-                      {doc.chunk_count} {doc.chunk_count === 1 ? "chunk" : "chunks"}
-                    </span>
-                  </span>
-                </label>
+                  </label>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="mt-1 hover:text-red-600 dark:hover:text-red-400"
+                    onClick={() => app.handleDeleteDocument(doc)}
+                    disabled={deleteDisabled}
+                    aria-label={`Delete ${doc.name}`}
+                    title="Delete document"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               ))}
             </section>
           )}

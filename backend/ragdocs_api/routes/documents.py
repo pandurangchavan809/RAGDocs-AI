@@ -7,7 +7,11 @@ from werkzeug.utils import secure_filename
 from ..config import UPLOAD_DIR
 from ..extensions import db
 from ..models import Document
-from ..services.document_service import get_user_documents, store_document_chunks
+from ..services.document_service import (
+    delete_user_documents,
+    get_user_documents,
+    store_document_chunks,
+)
 from ..services.pdf_service import allowed_file, extract_pdf_pages, split_text
 from ..utils.responses import error_response
 
@@ -30,6 +34,39 @@ def list_documents():
             for doc in documents
         ]
     )
+
+
+@documents_bp.delete("/documents/<int:document_id>")
+@jwt_required()
+def delete_document(document_id):
+    user_id = int(get_jwt_identity())
+    document = Document.query.filter_by(id=document_id, user_id=user_id).first()
+    if not document:
+        return error_response("Document not found.", 404)
+
+    try:
+        delete_user_documents(user_id, [document])
+    except Exception:
+        db.session.rollback()
+        return error_response("Could not delete this document. Please try again.", 500)
+
+    return jsonify({"message": "Document deleted."})
+
+
+@documents_bp.delete("/documents")
+@jwt_required()
+def delete_all_documents():
+    user_id = int(get_jwt_identity())
+    documents = get_user_documents(user_id)
+    count = len(documents)
+
+    try:
+        delete_user_documents(user_id, documents)
+    except Exception:
+        db.session.rollback()
+        return error_response("Could not delete all documents. Please try again.", 500)
+
+    return jsonify({"message": f"{count} documents deleted."})
 
 
 @documents_bp.post("/documents/upload")

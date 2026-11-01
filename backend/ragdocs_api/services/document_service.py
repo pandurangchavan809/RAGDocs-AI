@@ -19,6 +19,17 @@ def delete_document_chunks(store, document_id):
         store.delete(ids=existing_ids)
 
 
+def delete_user_documents(user_id, documents):
+    """Remove vectors first, then the file, then the row. A failure partway leaves the
+    document listed, so the user can retry, and never leaves searchable orphan vectors."""
+    store = get_vector_store(user_id)
+    for document in documents:
+        delete_document_chunks(store, document.id)
+        (UPLOAD_DIR / str(user_id) / document.stored_name).unlink(missing_ok=True)
+        db.session.delete(document)
+        db.session.commit()
+
+
 def store_document_chunks(user_id, document_id, document_name, chunks):
     store = get_vector_store(user_id)
     delete_document_chunks(store, document_id)

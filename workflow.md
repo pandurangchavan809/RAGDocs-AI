@@ -173,7 +173,7 @@ The package separates HTTP handling (`routes/`) from the logic (`services/`). Ro
 |---|---|
 | `__init__.py` | `register_blueprints` mounts every route group under `/api`. |
 | `auth.py` | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh` |
-| `documents.py` | `GET /documents`, `POST /documents/upload` |
+| `documents.py` | `GET /documents`, `POST /documents/upload`, `DELETE /documents/<id>`, `DELETE /documents` (all) |
 | `chat.py` | `GET /health`, `GET /config`, `GET /chat/history` (last 20), `DELETE /chat/history`, `POST /chat/stream` (used by the UI), `POST /chat` (same pipeline, full JSON reply) |
 
 ### 3.4 Services: `backend/ragdocs_api/services/`
@@ -203,7 +203,8 @@ The package separates HTTP handling (`routes/`) from the logic (`services/`). Ro
 | Function | What it does |
 |---|---|
 | `get_user_documents` | Fetches a user's documents, optionally limited to given ids. |
-| `delete_document_chunks` | Removes a document's old vectors before re-indexing, so nothing is duplicated. |
+| `delete_document_chunks` | Removes a document's vectors, before re-indexing or deleting it. |
+| `delete_user_documents` | Deletes each document's vectors, then its file, then its SQL row. A failure leaves it listed for a retry, with no searchable leftovers. |
 | `store_document_chunks` | Writes chunks with stable ids (`doc-<id>-chunk-<n>`) and metadata: user, document, file name, chunk number, page and index version. |
 | `document_needs_reindex` | True if a document has no vectors or was indexed with an older `INDEX_VERSION`. |
 | `ensure_documents_indexed` | Repairs or upgrades documents when a question arrives. Changing the embedding model or `INDEX_VERSION` therefore re-indexes lazily, with no migration script. |
@@ -333,5 +334,6 @@ One row holds one full question and answer. There is no conversation table, so e
 | Every question checks every in-scope document | Question latency grows with the number of documents |
 | No OCR | Scanned PDFs are rejected because they contain no readable text |
 | Short paragraphs under 10 words are dropped | Tables, short lists and headings can be lost |
-| No document delete, reranker, keyword search or relevance threshold | See the improvement plan in [interview.md](interview.md) |
+| Deleting a document keeps chat history | Old answers stay visible, and recent ones can still reach the model as memory until the chat is cleared |
+| No reranker, keyword search or relevance threshold | See the improvement plan in [interview.md](interview.md) |
 | Chroma and uploads are on local disk | Platforms with temporary disks lose them, and several servers can't share them |

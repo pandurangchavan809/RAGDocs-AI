@@ -31,6 +31,7 @@ export function useRagDocsApp() {
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [deletingDocs, setDeletingDocs] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState(emptyNotice);
 
@@ -87,6 +88,10 @@ export function useRagDocsApp() {
         api.get("/chat/history"),
       ]);
       setDocuments(docsRes.data);
+      // Drop selections for documents that no longer exist.
+      setSelectedDocs((current) =>
+        current.filter((id) => docsRes.data.some((doc) => doc.id === id))
+      );
       setHistory(historyRes.data);
     } catch (err) {
       handleError(err, "Could not load your workspace.");
@@ -234,6 +239,43 @@ export function useRagDocsApp() {
     }
   }
 
+  async function deleteDocuments(path, confirmMessage, successMessage, failureMessage) {
+    if (deletingDocs || busy || !window.confirm(confirmMessage)) {
+      return;
+    }
+
+    setDeletingDocs(true);
+    setError("");
+    try {
+      await api.delete(path);
+      showNotice(successMessage);
+    } catch (err) {
+      handleError(err, failureMessage);
+    } finally {
+      // Reload even after a failure, because a delete-all can stop partway.
+      await loadDashboard();
+      setDeletingDocs(false);
+    }
+  }
+
+  function handleDeleteDocument(doc) {
+    return deleteDocuments(
+      `/documents/${doc.id}`,
+      `Delete "${doc.name}"? This can't be undone. Your chat history will stay.`,
+      "Document deleted.",
+      "Could not delete this document."
+    );
+  }
+
+  function handleDeleteAllDocuments() {
+    return deleteDocuments(
+      "/documents",
+      `Delete all ${documents.length} documents? This can't be undone. Your chat history will stay.`,
+      "All documents deleted.",
+      "Could not delete all documents."
+    );
+  }
+
   function toggleDocument(id) {
     setSelectedDocs((current) =>
       current.includes(id)
@@ -330,6 +372,7 @@ export function useRagDocsApp() {
     busy,
     clearingHistory,
     config,
+    deletingDocs,
     documents,
     error,
     form,
@@ -346,6 +389,8 @@ export function useRagDocsApp() {
     clearSession,
     handleAuthSubmit,
     handleClearHistory,
+    handleDeleteAllDocuments,
+    handleDeleteDocument,
     handleDemoLogin,
     handleUpload,
     setAuthMode,

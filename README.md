@@ -22,6 +22,7 @@ The backend creates this account when it starts. It's shared, so everyone using 
 - Sign up and log in with JWT authentication and automatic login renewal
 - PDF upload by drag and drop, with per-user storage
 - Search across all documents, or only the ones you select
+- Delete documents one at a time or all together
 - Answers streamed live, with real progress steps and a Stop button
 - Answers with file, page and excerpt sources
 - Choice of models from Nebius, Google Gemini and OpenAI, plus an Auto mode with fallback
@@ -160,6 +161,8 @@ All routes start with `/api`. Routes marked "Yes" need `Authorization: Bearer <t
 | GET | `/config` | Yes | List available models and the Auto order |
 | GET | `/documents` | Yes | List documents |
 | POST | `/documents/upload` | Yes | Upload and index a PDF, up to 20 MB |
+| DELETE | `/documents/<id>` | Yes | Delete one document, its file and its vectors |
+| DELETE | `/documents` | Yes | Delete all of the user's documents |
 | POST | `/chat/stream` | Yes | Ask a question and stream steps and tokens (used by the UI) |
 | POST | `/chat` | Yes | Ask a question and get the full answer as JSON |
 | GET | `/chat/history` | Yes | Last 20 messages |
@@ -226,4 +229,4 @@ Yes. Text inside a PDF can include instructions aimed at the model, known as ind
 
 ## Known limitations
 
-Key gaps are slow synchronous indexing, no OCR, no reranking or keyword search, no relevance threshold, and no document deletion. The full list is in [workflow.md](workflow.md#6-known-limitations).
+Key gaps are slow synchronous indexing, no OCR, no reranking or keyword search, and no relevance threshold. The full list is in [workflow.md](workflow.md#6-known-limitations).
